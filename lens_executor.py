@@ -191,7 +191,7 @@ class LensExecutor:
                 result = self.execute_lens(db, session_id, lens.id)
                 results.append(result)
             except Exception as e:
-                print(f"Error executing lens {lens.id} ({lens.name}): {e}")
+                logger.error(f"Error executing lens {lens.id} ({lens.name}): {e}")
                 # Continue with other lenses
                 continue
 
@@ -249,20 +249,20 @@ class LensExecutor:
 
                 # Validate criterion name matches configuration
                 if criterion_name not in expected_criteria:
-                    print(f"Warning: Unexpected criterion '{criterion_name}' in response")
+                    logger.warning(f"Unexpected criterion '{criterion_name}' in response")
 
                 # Validate score is numeric if present
                 if "score" in result:
                     try:
                         float(result["score"])
                     except (ValueError, TypeError):
-                        print(f"Warning: Invalid score for criterion '{criterion_name}': {result['score']}")
+                        logger.warning(f"Invalid score for criterion '{criterion_name}': {result['score']}")
                         result["score"] = None
 
             # Warn if any expected criteria are missing
             missing = expected_criteria - found_criteria
             if missing:
-                print(f"Warning: LLM response missing criteria: {missing}")
+                logger.warning(f"LLM response missing criteria: {missing}")
 
             return criteria_results
 
@@ -304,3 +304,13 @@ def execute_lenses_for_session(
     """
     executor = LensExecutor(llm_client, model, temperature)
     return executor.execute_all_lenses(db, session_id, active_only=True)
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "LensExecutor",
+    "execute_lenses_for_session",
+]

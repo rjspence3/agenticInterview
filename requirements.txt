@@ -9,3 +9,6 @@ anthropic>=0.8.0
 # Phase 6: Persistence & Database
 sqlalchemy>=2.0.0
 alembic>=1.12.0
+
+# Real-time polling for admin chat
+streamlit-autorefresh>=0.0.9

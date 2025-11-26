@@ -79,3 +79,15 @@ class InterviewState:
     current_index: int = 0
     finished: bool = False
     evaluations: dict[int, EvaluationResult] = field(default_factory=dict)
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "Question",
+    "KeypointCoverage",
+    "EvaluationResult",
+    "InterviewState",
+]

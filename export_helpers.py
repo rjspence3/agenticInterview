@@ -167,3 +167,13 @@ def export_session_json(db: Session, session_id: int) -> str:
     }
 
     return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "export_sessions_csv",
+    "export_session_json",
+]

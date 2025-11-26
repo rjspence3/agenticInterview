@@ -6,7 +6,10 @@ Provides two views:
 - Interviewee: Take the interview and see results
 """
 
+from typing import Any, List, Optional, Union
+
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 from models import Question, InterviewState
 from agents import QuestionsAgent, EvaluatorAgent, OrchestratorAgent
 from logging_config import get_logger
@@ -21,7 +24,7 @@ try:
     LLM_AVAILABLE = True
 except ImportError as e:
     LLM_AVAILABLE = False
-    print(f"LLM features not available: {e}")
+    logger.warning(f"LLM features not available: {e}")
 
 # Phase 6: Database Integration
 try:
@@ -38,7 +41,7 @@ try:
     DATABASE_AVAILABLE = True
 except ImportError as e:
     DATABASE_AVAILABLE = False
-    print(f"Database features not available: {e}")
+    logger.warning(f"Database features not available: {e}")
 
 
 # Page configuration
@@ -49,7 +52,7 @@ st.set_page_config(
 )
 
 
-def initialize_session_state():
+def initialize_session_state() -> None:
     """Initialize session state variables if they don't exist."""
     if "questions" not in st.session_state:
         st.session_state.questions = []
@@ -72,8 +75,56 @@ def initialize_session_state():
             st.error(f"Database initialization failed: {e}")
             st.session_state.db_initialized = False
 
+    # Chat Interview session state
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []  # List of message dicts
 
-def get_evaluator_agent():
+    if "chat_interview_phase" not in st.session_state:
+        st.session_state.chat_interview_phase = "setup"  # "setup", "active", "complete"
+
+    if "chat_session_id" not in st.session_state:
+        st.session_state.chat_session_id = None
+
+    if "chat_current_question_index" not in st.session_state:
+        st.session_state.chat_current_question_index = 0
+
+    if "chat_questions_data" not in st.session_state:
+        st.session_state.chat_questions_data = []
+
+    if "chat_person_data" not in st.session_state:
+        st.session_state.chat_person_data = None
+
+    if "chat_template_data" not in st.session_state:
+        st.session_state.chat_template_data = None
+
+    # Raise Hand feature - Interviewee side
+    if "chat_hand_raised" not in st.session_state:
+        st.session_state.chat_hand_raised = False
+
+    if "chat_hand_raised_reason" not in st.session_state:
+        st.session_state.chat_hand_raised_reason = ""
+
+    if "chat_admin_present" not in st.session_state:
+        st.session_state.chat_admin_present = False
+
+    if "chat_interview_paused" not in st.session_state:
+        st.session_state.chat_interview_paused = False
+
+    if "chat_last_poll_count" not in st.session_state:
+        st.session_state.chat_last_poll_count = 0
+
+    if "chat_last_transcript_seq" not in st.session_state:
+        st.session_state.chat_last_transcript_seq = -1
+
+    # Raise Hand feature - Admin side
+    if "admin_viewing_session_id" not in st.session_state:
+        st.session_state.admin_viewing_session_id = None
+
+    if "admin_last_poll_count" not in st.session_state:
+        st.session_state.admin_last_poll_count = 0
+
+
+def get_evaluator_agent() -> EvaluatorAgent:
     """
     Get the appropriate evaluator based on selected mode.
 
@@ -116,7 +167,416 @@ def get_evaluator_agent():
         return EvaluatorAgent()
 
 
-def render_interviewer_view():
+# ==============================================================================
+# Raise Hand Feature - Helper Functions
+# ==============================================================================
+
+def update_session_metadata(session_id: int, updates: dict) -> bool:
+    """
+    Merge updates into session_metadata JSON field.
+
+    Args:
+        session_id: Interview session ID
+        updates: Dict of key-value pairs to merge into metadata
+
+    Returns:
+        True if successful, False otherwise
+    """
+    from db_models import InterviewSession
+    from sqlalchemy.orm.attributes import flag_modified
+    try:
+        with get_db_session() as db:
+            session = db.get(InterviewSession, session_id)
+            if not session:
+                return False
+
+            # Get existing metadata or empty dict
+            metadata = dict(session.session_metadata or {})
+            # Merge updates
+            metadata.update(updates)
+            session.session_metadata = metadata
+            # Explicitly mark JSON field as modified
+            flag_modified(session, "session_metadata")
+            db.flush()
+        return True
+    except Exception as e:
+        print(f"Error updating session metadata: {e}")
+        return False
+
+
+def get_session_metadata(session_id: int) -> dict:
+    """
+    Retrieve session_metadata dict for a session.
+
+    Args:
+        session_id: Interview session ID
+
+    Returns:
+        Metadata dict or empty dict if not found
+    """
+    from db_models import InterviewSession
+    try:
+        with get_db_session() as db:
+            session = db.get(InterviewSession, session_id)
+            if session and session.session_metadata:
+                return dict(session.session_metadata)
+        return {}
+    except Exception:
+        return {}
+
+
+def get_active_sessions_summary() -> list:
+    """
+    Query all IN_PROGRESS sessions with summary info for admin view.
+
+    Returns:
+        List of session summary dicts with hand_raised status
+    """
+    from db_models import InterviewSession, SessionStatus, Person, InterviewTemplate
+    from sqlalchemy import select
+
+    sessions_data = []
+    try:
+        with get_db_session() as db:
+            query = select(InterviewSession).where(
+                InterviewSession.status == SessionStatus.IN_PROGRESS
+            ).order_by(InterviewSession.started_at.desc())
+
+            sessions = db.execute(query).scalars().all()
+
+            for session in sessions:
+                metadata = session.session_metadata or {}
+                sessions_data.append({
+                    "id": session.id,
+                    "person_id": session.person_id,
+                    "person_name": session.person.name if session.person else "Unknown",
+                    "template_id": session.template_id,
+                    "template_name": session.template.name if session.template else "Unknown",
+                    "started_at": session.started_at,
+                    "hand_raised": metadata.get("hand_raised", False),
+                    "hand_raised_at": metadata.get("hand_raised_at"),
+                    "hand_raised_reason": metadata.get("hand_raised_reason"),
+                    "admin_joined": metadata.get("admin_joined", False),
+                    "admin_user": metadata.get("admin_user"),
+                    "current_question_index": metadata.get("current_question_index", 0)
+                })
+    except Exception as e:
+        print(f"Error getting active sessions: {e}")
+
+    return sessions_data
+
+
+def raise_hand(session_id: int, reason: str = "") -> bool:
+    """
+    Mark hand as raised for a session.
+
+    Args:
+        session_id: Interview session ID
+        reason: Optional reason for raising hand
+
+    Returns:
+        True if successful
+    """
+    from datetime import datetime
+    return update_session_metadata(session_id, {
+        "hand_raised": True,
+        "hand_raised_at": datetime.now().isoformat(),
+        "hand_raised_reason": reason
+    })
+
+
+def lower_hand(session_id: int) -> bool:
+    """
+    Cancel raised hand for a session.
+
+    Args:
+        session_id: Interview session ID
+
+    Returns:
+        True if successful
+    """
+    return update_session_metadata(session_id, {
+        "hand_raised": False,
+        "hand_raised_at": None,
+        "hand_raised_reason": None
+    })
+
+
+def join_session_as_admin(session_id: int, admin_user: str = "Admin") -> bool:
+    """
+    Admin joins and pauses interview.
+
+    Args:
+        session_id: Interview session ID
+        admin_user: Admin identifier for logging
+
+    Returns:
+        True if successful
+    """
+    from datetime import datetime
+    from db_models import TranscriptEntry, SpeakerType
+
+    success = update_session_metadata(session_id, {
+        "admin_joined": True,
+        "admin_joined_at": datetime.now().isoformat(),
+        "admin_user": admin_user
+    })
+
+    if success:
+        # Add system message to transcript
+        try:
+            with get_db_session() as db:
+                # Get next sequence index
+                from sqlalchemy import func, select
+                from db_models import TranscriptEntry
+                max_seq = db.execute(
+                    select(func.max(TranscriptEntry.sequence_index)).where(
+                        TranscriptEntry.session_id == session_id
+                    )
+                ).scalar() or 0
+
+                entry = TranscriptEntry(
+                    session_id=session_id,
+                    sequence_index=max_seq + 1,
+                    speaker=SpeakerType.SYSTEM,
+                    text="🎧 An administrator has joined the session. Interview is paused."
+                )
+                db.add(entry)
+                db.flush()
+        except Exception as e:
+            print(f"Error adding admin join message: {e}")
+
+    return success
+
+
+def leave_session_as_admin(session_id: int, resume: bool = True) -> bool:
+    """
+    Admin leaves session, optionally resuming the interview.
+
+    Args:
+        session_id: Interview session ID
+        resume: If True, resume the interview; if False, keep paused
+
+    Returns:
+        True if successful
+    """
+    from db_models import TranscriptEntry, SpeakerType
+
+    success = update_session_metadata(session_id, {
+        "admin_joined": False,
+        "admin_joined_at": None,
+        "admin_user": None,
+        "hand_raised": False,  # Clear raised hand when admin leaves
+        "hand_raised_at": None,
+        "hand_raised_reason": None
+    })
+
+    if success:
+        # Add system message to transcript
+        try:
+            with get_db_session() as db:
+                from sqlalchemy import func, select
+                max_seq = db.execute(
+                    select(func.max(TranscriptEntry.sequence_index)).where(
+                        TranscriptEntry.session_id == session_id
+                    )
+                ).scalar() or 0
+
+                msg = "✅ Administrator has left. Interview resumed." if resume else "⏸️ Administrator has left. Interview remains paused."
+                entry = TranscriptEntry(
+                    session_id=session_id,
+                    sequence_index=max_seq + 1,
+                    speaker=SpeakerType.SYSTEM,
+                    text=msg
+                )
+                db.add(entry)
+                db.flush()
+        except Exception as e:
+            print(f"Error adding admin leave message: {e}")
+
+    return success
+
+
+def admin_send_message(session_id: int, message: str) -> bool:
+    """
+    Send message as ADMIN speaker to transcript.
+
+    Args:
+        session_id: Interview session ID
+        message: Message text
+
+    Returns:
+        True if successful
+    """
+    from db_models import TranscriptEntry, SpeakerType
+
+    try:
+        with get_db_session() as db:
+            from sqlalchemy import func, select
+            max_seq = db.execute(
+                select(func.max(TranscriptEntry.sequence_index)).where(
+                    TranscriptEntry.session_id == session_id
+                )
+            ).scalar() or 0
+
+            entry = TranscriptEntry(
+                session_id=session_id,
+                sequence_index=max_seq + 1,
+                speaker=SpeakerType.ADMIN,
+                text=message
+            )
+            db.add(entry)
+            db.flush()
+        return True
+    except Exception as e:
+        print(f"Error sending admin message: {e}")
+        return False
+
+
+def get_transcript_since(session_id: int, since_seq: int) -> list:
+    """
+    Get transcript entries after a sequence index.
+
+    Args:
+        session_id: Interview session ID
+        since_seq: Sequence index to start after
+
+    Returns:
+        List of transcript entry dicts
+    """
+    from db_models import TranscriptEntry
+    from sqlalchemy import select
+
+    entries = []
+    try:
+        with get_db_session() as db:
+            query = select(TranscriptEntry).where(
+                TranscriptEntry.session_id == session_id,
+                TranscriptEntry.sequence_index > since_seq
+            ).order_by(TranscriptEntry.sequence_index)
+
+            results = db.execute(query).scalars().all()
+            for entry in results:
+                entries.append({
+                    "sequence_index": entry.sequence_index,
+                    "speaker": entry.speaker.value,
+                    "text": entry.text,
+                    "timestamp": entry.timestamp
+                })
+    except Exception as e:
+        print(f"Error getting transcript: {e}")
+
+    return entries
+
+
+def poll_session_status(session_id: int) -> dict:
+    """
+    Poll for session status changes (admin presence, new messages).
+
+    Args:
+        session_id: Interview session ID
+
+    Returns:
+        Dict with admin_joined, hand_raised, and new_messages count
+    """
+    metadata = get_session_metadata(session_id)
+    last_seq = st.session_state.get("chat_last_transcript_seq", -1)
+    new_entries = get_transcript_since(session_id, last_seq)
+
+    return {
+        "admin_joined": metadata.get("admin_joined", False),
+        "hand_raised": metadata.get("hand_raised", False),
+        "new_messages": len(new_entries),
+        "new_entries": new_entries
+    }
+
+
+def admin_skip_question(session_id: int) -> bool:
+    """
+    Skip current question and advance to next.
+
+    Args:
+        session_id: Interview session ID
+
+    Returns:
+        True if successful
+    """
+    from db_models import TranscriptEntry, SpeakerType
+
+    try:
+        with get_db_session() as db:
+            from sqlalchemy import func, select
+            max_seq = db.execute(
+                select(func.max(TranscriptEntry.sequence_index)).where(
+                    TranscriptEntry.session_id == session_id
+                )
+            ).scalar() or 0
+
+            entry = TranscriptEntry(
+                session_id=session_id,
+                sequence_index=max_seq + 1,
+                speaker=SpeakerType.SYSTEM,
+                text="⏭️ Question skipped by administrator."
+            )
+            db.add(entry)
+            db.flush()
+        return True
+    except Exception as e:
+        print(f"Error skipping question: {e}")
+        return False
+
+
+def admin_end_interview(session_id: int) -> bool:
+    """
+    Force-end interview early.
+
+    Args:
+        session_id: Interview session ID
+
+    Returns:
+        True if successful
+    """
+    from db_models import InterviewSession, SessionStatus, TranscriptEntry, SpeakerType
+    from datetime import datetime
+
+    try:
+        with get_db_session() as db:
+            session = db.get(InterviewSession, session_id)
+            if session:
+                session.status = SessionStatus.COMPLETED
+                session.completed_at = datetime.now()
+
+                # Add system message
+                from sqlalchemy import func, select
+                max_seq = db.execute(
+                    select(func.max(TranscriptEntry.sequence_index)).where(
+                        TranscriptEntry.session_id == session_id
+                    )
+                ).scalar() or 0
+
+                entry = TranscriptEntry(
+                    session_id=session_id,
+                    sequence_index=max_seq + 1,
+                    speaker=SpeakerType.SYSTEM,
+                    text="🛑 Interview ended early by administrator."
+                )
+                db.add(entry)
+                db.flush()
+
+        # Clear admin session state
+        update_session_metadata(session_id, {
+            "admin_joined": False,
+            "admin_joined_at": None,
+            "admin_user": None,
+            "hand_raised": False
+        })
+        return True
+    except Exception as e:
+        print(f"Error ending interview: {e}")
+        return False
+
+
+def render_interviewer_view() -> None:
     """Render the interviewer view for creating and managing questions."""
     st.header("Interviewer View")
     st.write("Create and manage interview questions with keypoints.")
@@ -207,7 +667,7 @@ def render_interviewer_view():
         st.rerun()
 
 
-def render_interviewee_view():
+def render_interviewee_view() -> None:
     """Render the interviewee view for taking the interview."""
     st.header("Interviewee View")
 
@@ -219,7 +679,7 @@ def render_interviewee_view():
         render_legacy_interview()
 
 
-def render_db_interview():
+def render_db_interview() -> None:
     """Render database-backed interview flow."""
     # Check if there's an active session
     if "active_session_id" not in st.session_state:
@@ -228,7 +688,7 @@ def render_db_interview():
         render_active_interview()
 
 
-def render_interview_setup():
+def render_interview_setup() -> None:
     """Render the interview setup page (select person and template)."""
     st.subheader("Start New Interview")
 
@@ -326,11 +786,11 @@ def render_interview_setup():
             st.error(f"Error starting interview: {e}")
 
 
-def render_active_interview():
+def render_active_interview() -> None:
     """Render the active interview (Q&A flow)."""
     session_id = st.session_state.active_session_id
 
-    # Load session from database
+    # Load session from database and extract data while in session context
     with get_db_session() as db:
         session = db.get(InterviewSession, session_id)
         if not session:
@@ -339,21 +799,43 @@ def render_active_interview():
             st.rerun()
             return
 
-        # Load template and questions
-        template = session.template
-        questions = sorted(template.questions, key=lambda q: q.order_index)
-        person = session.person
+        # Extract all needed data into plain Python objects to avoid DetachedInstanceError
+        person_data = {
+            "id": session.person.id,
+            "name": session.person.name,
+            "email": session.person.email,
+            "role": session.person.role,
+            "department": session.person.department,
+        }
+        template_data = {
+            "id": session.template.id,
+            "name": session.template.name,
+            "version": session.template.version,
+            "description": session.template.description,
+        }
+        # Extract questions data
+        questions_data = [
+            {
+                "id": q.id,
+                "question_text": q.question_text,
+                "competency": q.competency,
+                "difficulty": q.difficulty,
+                "keypoints": q.keypoints or [],
+                "order_index": q.order_index,
+            }
+            for q in sorted(session.template.questions, key=lambda q: q.order_index)
+        ]
 
     # Check if interview is complete
     current_index = st.session_state.get("current_question_index", 0)
 
-    if current_index >= len(questions):
-        render_db_interview_complete(session_id, person, template, questions)
+    if current_index >= len(questions_data):
+        render_db_interview_complete(session_id, person_data, template_data, questions_data)
     else:
-        render_db_current_question(session_id, person, template, questions, current_index)
+        render_db_current_question(session_id, person_data, template_data, questions_data, current_index)
 
 
-def render_db_current_question(session_id, person, template, questions, current_index):
+def render_db_current_question(session_id: int, person: dict, template: dict, questions: List[dict], current_index: int) -> None:
     """Render the current question in database-backed interview."""
     current_question = questions[current_index]
 
@@ -364,11 +846,11 @@ def render_db_current_question(session_id, person, template, questions, current_
 
     # Display question
     st.subheader(f"Question {current_index + 1}")
-    st.write(f"**Interviewee:** {person.name}")
-    st.write(f"**Competency:** {current_question.competency}")
-    st.write(f"**Difficulty:** {current_question.difficulty}")
+    st.write(f"**Interviewee:** {person['name']}")
+    st.write(f"**Competency:** {current_question['competency']}")
+    st.write(f"**Difficulty:** {current_question['difficulty']}")
     st.divider()
-    st.markdown(f"### {current_question.question_text}")
+    st.markdown(f"### {current_question['question_text']}")
 
     # Answer form
     with st.form(key=f"answer_form_{session_id}_{current_index}", clear_on_submit=True):
@@ -389,17 +871,20 @@ def render_db_current_question(session_id, person, template, questions, current_
                     # Get evaluator
                     evaluator = get_evaluator_agent()
 
-                    # Convert TemplateQuestion to Question for evaluation
+                    # Convert question dict to Question for evaluation
                     question_obj = Question(
-                        id=current_question.id,
-                        text=current_question.question_text,
-                        competency=current_question.competency,
-                        difficulty=current_question.difficulty,
-                        keypoints=current_question.keypoints
+                        id=current_question['id'],
+                        text=current_question['question_text'],
+                        competency=current_question['competency'],
+                        difficulty=current_question['difficulty'],
+                        keypoints=current_question['keypoints']
                     )
 
-                    # Evaluate answer
-                    evaluation = evaluator.evaluate(question_obj, answer.strip())
+                    # Evaluate answer with loading indicator
+                    eval_mode = st.session_state.get('evaluator_mode', 'Heuristic')
+                    spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode == "LLM-Powered" else "Evaluating answer..."
+                    with st.spinner(spinner_msg):
+                        evaluation = evaluator.evaluate(question_obj, answer.strip())
 
                     # Store in database
                     with get_db_session() as db:
@@ -415,7 +900,7 @@ def render_db_current_question(session_id, person, template, questions, current_
                             session_id=session_id,
                             sequence_index=max_seq + 1,
                             speaker=SpeakerType.SYSTEM,
-                            text=current_question.question_text
+                            text=current_question['question_text']
                         ))
 
                         # Participant answer
@@ -431,7 +916,7 @@ def render_db_current_question(session_id, person, template, questions, current_
 
                         db.add(QuestionEvaluation(
                             session_id=session_id,
-                            template_question_id=current_question.id,
+                            template_question_id=current_question['id'],
                             evaluator_type=EvaluatorType.HEURISTIC if st.session_state.evaluator_mode == "Heuristic" else EvaluatorType.LLM,
                             score_0_100=evaluation.score_0_100,
                             mastery_label=mastery_map[evaluation.mastery_label],
@@ -464,7 +949,7 @@ def render_db_current_question(session_id, person, template, questions, current_
                     st.code(traceback.format_exc())
 
 
-def render_db_interview_complete(session_id, person, template, questions):
+def render_db_interview_complete(session_id: int, person: dict, template: dict, questions: List[dict]) -> None:
     """Render completion page for database-backed interview."""
     # Update session status
     with get_db_session() as db:
@@ -480,16 +965,16 @@ def render_db_interview_complete(session_id, person, template, questions):
                 strong_count = sum(1 for e in evaluations if e.mastery_label.value == "strong")
                 weak_count = sum(1 for e in evaluations if e.mastery_label.value == "weak")
 
-                summary = f"""Interview Summary for {person.name}
-Template: {template.name} (v{template.version})
+                summary = f"""Interview Summary for {person['name']}
+Template: {template['name']} (v{template['version']})
 Questions: {len(evaluations)}
 Average Score: {avg_score:.1f}/100
 Strong: {strong_count}, Weak: {weak_count}
 """
                 session.summary = summary
-                logger.info(f"Interview session completed: session_id={session_id}, person='{person.name}', template='{template.name}', avg_score={avg_score:.1f}, questions={len(evaluations)}")
+                logger.info(f"Interview session completed: session_id={session_id}, person='{person['name']}', template='{template['name']}', avg_score={avg_score:.1f}, questions={len(evaluations)}")
             else:
-                logger.info(f"Interview session completed: session_id={session_id}, person='{person.name}', template='{template.name}', no_evaluations=True")
+                logger.info(f"Interview session completed: session_id={session_id}, person='{person['name']}', template='{template['name']}', no_evaluations=True")
 
             db.flush()
 
@@ -536,10 +1021,9 @@ Strong: {strong_count}, Weak: {weak_count}
                     with st.spinner("Analyzing interview with lenses..."):
                         with get_db_session() as db:
                             lens_results = executor.execute_all_lenses(db, session_id, active_only=True)
-
-                    # Show success
-                    completed_count = sum(1 for lr in lens_results if lr.status.value == "completed")
-                    failed_count = sum(1 for lr in lens_results if lr.status.value == "failed")
+                            # Extract counts before session closes (avoid DetachedInstanceError)
+                            completed_count = sum(1 for lr in lens_results if lr.status.value == "completed")
+                            failed_count = sum(1 for lr in lens_results if lr.status.value == "failed")
 
                     if completed_count > 0:
                         st.success(f"✅ Lens analysis complete! {completed_count} lenses executed successfully.")
@@ -561,14 +1045,27 @@ Strong: {strong_count}, Weak: {weak_count}
     else:
         st.info("ℹ️ Lens analysis is only available in LLM-Powered mode. Switch mode in sidebar to enable.")
 
-    # Load evaluations
+    # Load evaluations and summary
     with get_db_session() as db:
         session = db.get(InterviewSession, session_id)
-        evaluations = list(session.evaluations)
+        session_summary = session.summary
+        # Extract evaluation data while in session context
+        evaluations_data = [
+            {
+                "template_question_id": e.template_question_id,
+                "score_0_100": e.score_0_100,
+                "mastery_label": e.mastery_label.value,
+                "raw_answer": e.raw_answer,
+                "short_feedback": e.short_feedback,
+                "keypoints_coverage": e.keypoints_coverage or [],
+                "suggested_followup": e.suggested_followup,
+            }
+            for e in session.evaluations
+        ]
 
     # Display summary
-    if session.summary:
-        st.markdown(f"```\n{session.summary}\n```")
+    if session_summary:
+        st.markdown(f"```\n{session_summary}\n```")
 
     st.divider()
 
@@ -577,30 +1074,30 @@ Strong: {strong_count}, Weak: {weak_count}
 
     for i, question in enumerate(questions):
         # Find evaluation for this question
-        evaluation = next((e for e in evaluations if e.template_question_id == question.id), None)
+        evaluation = next((e for e in evaluations_data if e["template_question_id"] == question["id"]), None)
 
         if evaluation:
-            with st.expander(f"Q{i+1}: {question.question_text[:50]}... - Score: {evaluation.score_0_100}/100"):
-                st.write(f"**Question:** {question.question_text}")
-                st.write(f"**Competency:** {question.competency}")
-                st.write(f"**Difficulty:** {question.difficulty}")
+            with st.expander(f"Q{i+1}: {question['question_text'][:50]}... - Score: {evaluation['score_0_100']}/100"):
+                st.write(f"**Question:** {question['question_text']}")
+                st.write(f"**Competency:** {question['competency']}")
+                st.write(f"**Difficulty:** {question['difficulty']}")
                 st.divider()
 
                 st.write(f"**Your Answer:**")
-                st.text(evaluation.raw_answer)
+                st.text(evaluation['raw_answer'])
                 st.divider()
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Score", f"{evaluation.score_0_100}/100")
+                    st.metric("Score", f"{evaluation['score_0_100']}/100")
                 with col2:
-                    st.metric("Mastery", evaluation.mastery_label.value.upper())
+                    st.metric("Mastery", evaluation['mastery_label'].upper())
 
-                st.write(f"**Feedback:** {evaluation.short_feedback}")
+                st.write(f"**Feedback:** {evaluation['short_feedback']}")
 
                 # Keypoint coverage
                 st.write("**Keypoint Coverage:**")
-                for kp in evaluation.keypoints_coverage:
+                for kp in evaluation['keypoints_coverage']:
                     if kp.get("covered"):
                         st.success(f"✓ {kp['keypoint']}")
                         if kp.get("evidence"):
@@ -608,8 +1105,8 @@ Strong: {strong_count}, Weak: {weak_count}
                     else:
                         st.error(f"✗ {kp['keypoint']}")
 
-                if evaluation.suggested_followup:
-                    st.info(f"💡 {evaluation.suggested_followup}")
+                if evaluation['suggested_followup']:
+                    st.info(f"💡 {evaluation['suggested_followup']}")
 
     # Buttons
     st.divider()
@@ -624,7 +1121,7 @@ Strong: {strong_count}, Weak: {weak_count}
             st.info("Session history coming in Phase 7")
 
 
-def render_legacy_interview():
+def render_legacy_interview() -> None:
     """Fallback to legacy in-memory interview flow."""
     # Check if questions exist
     if not st.session_state.questions:
@@ -680,8 +1177,11 @@ def render_current_question(state: InterviewState, questions_agent: QuestionsAge
             if not answer.strip():
                 st.error("Please provide an answer before submitting")
             else:
-                # Process answer through orchestrator
-                updated_state = orchestrator_agent.step(state, answer)
+                # Process answer through orchestrator with loading indicator
+                eval_mode = st.session_state.get('evaluator_mode', 'Heuristic')
+                spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode == "LLM-Powered" else "Evaluating answer..."
+                with st.spinner(spinner_msg):
+                    updated_state = orchestrator_agent.step(state, answer)
                 st.session_state.interview_state = updated_state
 
                 # Show immediate feedback
@@ -759,7 +1259,7 @@ def render_interview_summary(state: InterviewState, questions_agent: QuestionsAg
         st.rerun()
 
 
-def render_session_detail_view(session_id: int):
+def render_session_detail_view(session_id: int) -> None:
     """Render detailed view of a single interview session."""
     from db_models import LensResult, LensCriterionResult, LensResultStatus
 
@@ -1070,7 +1570,7 @@ def render_session_detail_view(session_id: int):
                         st.divider()
 
 
-def render_reports_view():
+def render_reports_view() -> None:
     """Render the reports dashboard with analytics and filtering."""
     if not DATABASE_AVAILABLE:
         st.error("Database features not available. Please install database dependencies.")
@@ -1253,10 +1753,16 @@ def render_reports_view():
         bin_counts = [0] * len(bin_labels)
 
         for score in all_scores:
-            for i, threshold in enumerate(bins[1:]):
-                if score < threshold:
-                    bin_counts[i] += 1
-                    break
+            if score >= 90:
+                bin_counts[4] += 1  # 90-100 (Excellent)
+            elif score >= 80:
+                bin_counts[3] += 1  # 80-89 (Strong)
+            elif score >= 70:
+                bin_counts[2] += 1  # 70-79 (Good)
+            elif score >= 50:
+                bin_counts[1] += 1  # 50-69 (Fair)
+            else:
+                bin_counts[0] += 1  # 0-49 (Weak)
 
         # Display as columns with metrics
         cols = st.columns(len(bin_labels))
@@ -1265,13 +1771,14 @@ def render_reports_view():
                 percentage = (count / len(all_scores) * 100) if all_scores else 0
                 st.metric(label, count, f"{percentage:.1f}%")
 
-        # Add visual bar chart
-        import pandas as pd
-        chart_data = pd.DataFrame({
-            'Score Range': bin_labels,
-            'Count': bin_counts
-        }).set_index('Score Range')
-        st.bar_chart(chart_data)
+        # Add visual bar chart (only if there's data to display)
+        if any(bin_counts):
+            import pandas as pd
+            chart_data = pd.DataFrame({
+                'Score Range': bin_labels,
+                'Count': bin_counts
+            }).set_index('Score Range')
+            st.bar_chart(chart_data)
 
         st.divider()
 
@@ -1485,7 +1992,7 @@ def render_reports_view():
         st.caption(f"Showing 20 most recent sessions out of {len(sessions)} total. Use filters to narrow down results.")
 
 
-def render_admin_view():
+def render_admin_view() -> None:
     """Render the admin view for managing people and templates."""
     if not DATABASE_AVAILABLE:
         st.error("Database features not available. Please install database dependencies.")
@@ -1493,10 +2000,10 @@ def render_admin_view():
         return
 
     st.header("Admin Dashboard")
-    st.write("Manage people, interview templates, lenses, and sessions.")
+    st.write("Manage people, interview templates, lenses, and monitor live sessions.")
 
     # Create tabs for different admin functions
-    tab1, tab2, tab3 = st.tabs(["👥 People Management", "📋 Template Management", "🔍 Lens Management"])
+    tab1, tab2, tab3, tab4 = st.tabs(["👥 People Management", "📋 Template Management", "🔍 Lens Management", "🎧 Live Sessions"])
 
     with tab1:
         render_people_management()
@@ -1507,8 +2014,11 @@ def render_admin_view():
     with tab3:
         render_lens_management()
 
+    with tab4:
+        render_live_sessions()
 
-def render_people_management():
+
+def render_people_management() -> None:
     """Render the people management interface."""
     st.subheader("People Management")
 
@@ -1563,8 +2073,10 @@ def render_people_management():
                             )
                             db.add(new_person)
                             db.flush()
+                            # Save name before session closes (object detaches after context exits)
+                            person_name = new_person.name
 
-                        st.success(f"Added {new_person.name}")
+                        st.success(f"Added {person_name}")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error adding person: {e}")
@@ -1658,7 +2170,7 @@ def render_people_management():
                             st.error(f"Error updating status: {e}")
 
 
-def render_template_management():
+def render_template_management() -> None:
     """Render the template management interface."""
     st.subheader("Template Management")
 
@@ -1704,8 +2216,10 @@ def render_template_management():
                             )
                             db.add(new_template)
                             db.flush()
+                            # Save name before session closes (object detaches after context exits)
+                            template_name = new_template.name
 
-                        st.success(f"Created template: {new_template.name}")
+                        st.success(f"Created template: {template_name}")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error creating template: {e}")
@@ -1868,7 +2382,7 @@ def render_template_management():
                                     st.error(f"Error adding question: {e}")
 
 
-def render_lens_management():
+def render_lens_management() -> None:
     """Render the lens management interface."""
     st.subheader("Lens Management")
     st.write("Lenses define analytical frameworks for evaluating interview transcripts.")
@@ -1980,8 +2494,10 @@ def render_lens_management():
                                     )
                                     db.add(new_lens)
                                     db.flush()
+                                    # Save name before session closes (object detaches after context exits)
+                                    lens_name = new_lens.name
 
-                                st.success(f"Created lens: {new_lens.name}")
+                                st.success(f"Created lens: {lens_name}")
                                 st.rerun()
 
                     except json.JSONDecodeError as e:
@@ -2079,9 +2595,888 @@ def render_lens_management():
                 st.json(lens['config'])
 
 
-def main():
-    """Main application entry point."""
+# ==============================================================================
+# LIVE SESSIONS (ADMIN CHAT)
+# ==============================================================================
+
+def render_live_sessions() -> None:
+    """Render the live sessions dashboard for admins to monitor and join sessions."""
+    st.subheader("🎧 Live Sessions")
+
+    # Check if we're viewing a specific session
+    if st.session_state.admin_viewing_session_id:
+        render_admin_session_view()
+        return
+
+    # Auto-refresh for live monitoring
+    poll_count = st_autorefresh(interval=3000, key="admin_sessions_poll")
+
+    # Get active sessions
+    sessions = get_active_sessions_summary()
+
+    if not sessions:
+        st.info("No active interview sessions at the moment.")
+        st.caption("Sessions will appear here when interviewees start interviews.")
+        return
+
+    st.write(f"**{len(sessions)} Active Session{'s' if len(sessions) != 1 else ''}**")
+
+    # Display sessions in a table-like format
+    for session in sessions:
+        with st.container():
+            col1, col2, col3, col4, col5 = st.columns([2, 2, 1, 1, 1])
+
+            with col1:
+                st.write(f"**{session['person_name']}**")
+                st.caption(f"Session #{session['id']}")
+
+            with col2:
+                st.write(session['template_name'])
+
+            with col3:
+                st.caption(f"Q {session.get('current_question_index', 0) + 1}")
+
+            with col4:
+                if session['hand_raised']:
+                    st.markdown("🙋 **HAND**")
+                elif session.get('admin_joined'):
+                    st.markdown("👨‍💼 Admin")
+                else:
+                    st.caption("-")
+
+            with col5:
+                button_key = f"join_session_{session['id']}"
+                if session.get('admin_joined'):
+                    if st.button("View", key=button_key, use_container_width=True):
+                        st.session_state.admin_viewing_session_id = session['id']
+                        st.rerun()
+                else:
+                    if st.button("Join", key=button_key, use_container_width=True, type="primary" if session['hand_raised'] else "secondary"):
+                        if join_session_as_admin(session['id'], "admin"):
+                            st.session_state.admin_viewing_session_id = session['id']
+                            st.rerun()
+                        else:
+                            st.error("Failed to join session. Another admin may already be in the session.")
+
+            st.divider()
+
+    # Legend
+    with st.expander("Legend"):
+        st.write("🙋 **HAND** - Interviewee has raised their hand requesting assistance")
+        st.write("👨‍💼 **Admin** - An admin is currently in the session")
+        st.write("**Join** - Join the session and pause the interview")
+        st.write("**View** - View an active session you're already in")
+
+
+def render_admin_session_view() -> None:
+    """Render the admin view when joined to a session."""
+    session_id = st.session_state.admin_viewing_session_id
+
+    # Auto-refresh for messages
+    poll_count = st_autorefresh(interval=2000, key="admin_session_poll")
+
+    # Get session info
+    from db_models import InterviewSession, Person, InterviewTemplate, TranscriptEntry
+
+    with get_db_session() as db:
+        session = db.get(InterviewSession, session_id)
+        if not session:
+            st.error("Session not found.")
+            st.session_state.admin_viewing_session_id = None
+            st.rerun()
+            return
+
+        person_name = session.person.name if session.person else "Unknown"
+        template_name = session.template.name if session.template else "Unknown"
+        metadata = session.session_metadata or {}
+
+        # Get transcript
+        transcript = db.execute(
+            select(TranscriptEntry)
+            .where(TranscriptEntry.session_id == session_id)
+            .order_by(TranscriptEntry.sequence_index)
+        ).scalars().all()
+
+        transcript_list = [
+            {
+                "speaker": entry.speaker.value,
+                "text": entry.text,
+                "seq": entry.sequence_index
+            }
+            for entry in transcript
+        ]
+
+    # Back button
+    col_back, col_title = st.columns([1, 4])
+    with col_back:
+        if st.button("← Back to Dashboard", use_container_width=True):
+            st.session_state.admin_viewing_session_id = None
+            st.rerun()
+
+    with col_title:
+        st.write(f"### {person_name} - {template_name}")
+
+    # Status indicator
+    if metadata.get("admin_joined"):
+        st.success("🔴 LIVE - You are in this session. Interview is paused.")
+    else:
+        st.warning("Viewing session (not joined)")
+
+    st.divider()
+
+    # Transcript display
+    st.write("**Transcript**")
+
+    transcript_container = st.container()
+    with transcript_container:
+        if not transcript_list:
+            st.info("No transcript entries yet.")
+        else:
+            for entry in transcript_list:
+                speaker = entry["speaker"]
+                text = entry["text"]
+
+                if speaker == "system":
+                    with st.chat_message("assistant", avatar="🤖"):
+                        st.write(text)
+                elif speaker == "participant":
+                    with st.chat_message("user", avatar="👤"):
+                        st.write(text)
+                elif speaker == "admin":
+                    with st.chat_message("assistant", avatar="👨‍💼"):
+                        st.info(f"**Admin:** {text}")
+
+    st.divider()
+
+    # Admin message input
+    if metadata.get("admin_joined"):
+        st.write("**Send Message**")
+        admin_message = st.text_input("Message to interviewee:", key="admin_message_input", placeholder="Type your message here...")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            if st.button("📤 Send Message", use_container_width=True, type="primary"):
+                if admin_message.strip():
+                    if admin_send_message(session_id, admin_message.strip()):
+                        st.rerun()
+                    else:
+                        st.error("Failed to send message.")
+                else:
+                    st.warning("Please enter a message.")
+
+        st.divider()
+
+        # Admin controls
+        st.write("**Session Controls**")
+        ctrl_col1, ctrl_col2, ctrl_col3 = st.columns(3)
+
+        with ctrl_col1:
+            if st.button("⏭️ Skip Question", use_container_width=True, help="Skip the current question and move to next"):
+                if admin_skip_question(session_id):
+                    st.success("Question skipped!")
+                    st.rerun()
+                else:
+                    st.error("Failed to skip question.")
+
+        with ctrl_col2:
+            if st.button("🛑 End Interview", use_container_width=True, type="secondary", help="End the interview early"):
+                if admin_end_interview(session_id):
+                    st.success("Interview ended.")
+                    st.session_state.admin_viewing_session_id = None
+                    st.rerun()
+                else:
+                    st.error("Failed to end interview.")
+
+        with ctrl_col3:
+            if st.button("▶️ Resume & Leave", use_container_width=True, type="primary", help="Resume interview and leave session"):
+                if leave_session_as_admin(session_id, resume=True):
+                    st.success("Interview resumed!")
+                    st.session_state.admin_viewing_session_id = None
+                    st.rerun()
+                else:
+                    st.error("Failed to leave session.")
+
+
+def check_password() -> bool:
+    """
+    Check if the user has entered the correct password.
+
+    Returns True if:
+    - No password is configured (APP_PASSWORD is empty), or
+    - User has entered the correct password
+
+    Returns False if password is required but not yet entered correctly.
+    """
+    # If no password is configured, allow access
+    if not LLM_AVAILABLE or not hasattr(settings, 'APP_PASSWORD') or not settings.APP_PASSWORD:
+        return True
+
+    # Check if already authenticated in session
+    if st.session_state.get("authenticated", False):
+        return True
+
+    # Show login form
     st.title("Agentic Interview System")
+    st.subheader("Login Required")
+
+    with st.form("login_form"):
+        password = st.text_input("Password", type="password", key="password_input")
+        submit = st.form_submit_button("Login")
+
+        if submit:
+            if password == settings.APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password. Please try again.")
+
+    return False
+
+
+# ==============================================================================
+# CHAT INTERVIEW VIEW
+# ==============================================================================
+
+def reset_chat_interview_state() -> None:
+    """Reset all chat interview session state."""
+    st.session_state.chat_messages = []
+    st.session_state.chat_interview_phase = "setup"
+    st.session_state.chat_session_id = None
+    st.session_state.chat_current_question_index = 0
+    st.session_state.chat_questions_data = []
+    st.session_state.chat_person_data = None
+    st.session_state.chat_template_data = None
+
+
+def add_chat_message(role: str, content: str, msg_type: str = "", metadata: dict = None) -> None:
+    """Add a message to the chat history."""
+    st.session_state.chat_messages.append({
+        "role": role,
+        "content": content,
+        "type": msg_type,
+        "metadata": metadata or {}
+    })
+
+
+def render_chat_message(message: dict) -> None:
+    """Render a single chat message using Streamlit's chat_message."""
+    role = message.get("role", "assistant")
+    content = message.get("content", "")
+    msg_type = message.get("type", "")
+    metadata = message.get("metadata", {})
+
+    # Map role to Streamlit avatar
+    if msg_type == "admin":
+        avatar = "👨‍💼"
+        display_role = "assistant"  # Streamlit only supports user/assistant
+    elif role == "assistant":
+        avatar = "🤖"
+        display_role = role
+    else:
+        avatar = "👤"
+        display_role = role
+
+    with st.chat_message(display_role, avatar=avatar):
+        if msg_type == "evaluation":
+            # Color-coded evaluation based on mastery
+            mastery = metadata.get("mastery", "mixed")
+            score = metadata.get("score", 0)
+
+            # Show score prominently
+            score_text = f"**Score: {score}/100**"
+            if mastery == "strong":
+                st.success(f"{score_text} - {content}")
+            elif mastery == "mixed":
+                st.warning(f"{score_text} - {content}")
+            else:
+                st.error(f"{score_text} - {content}")
+
+            # Show keypoint coverage if available
+            keypoints = metadata.get("keypoints_coverage", [])
+            if keypoints:
+                with st.expander("Keypoint Coverage"):
+                    for kp in keypoints:
+                        icon = "✅" if kp.get("covered") else "❌"
+                        st.write(f"{icon} {kp.get('keypoint', '')}")
+
+            # Show follow-up suggestion if available
+            followup = metadata.get("suggested_followup")
+            if followup:
+                st.info(f"💡 **Follow-up:** {followup}")
+
+        elif msg_type == "question":
+            # Question with metadata badges
+            q_idx = metadata.get("question_index", 0)
+            competency = metadata.get("competency", "")
+            difficulty = metadata.get("difficulty", "")
+
+            # Header with badges
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                st.markdown(f"**Question {q_idx + 1}**")
+            with col2:
+                st.caption(f"📚 {competency}")
+            with col3:
+                st.caption(f"⚡ {difficulty}")
+
+            st.markdown(content)
+
+        elif msg_type == "summary":
+            # Summary with formatted stats
+            st.markdown(content)
+
+        elif msg_type == "admin":
+            # Admin message with distinct styling
+            st.info(f"**Admin:** {content}")
+
+        elif msg_type == "paused":
+            # Interview paused notification
+            st.warning(content)
+
+        else:
+            # Default message rendering
+            st.markdown(content)
+
+
+def render_chat_progress_indicator() -> None:
+    """Show progress indicator for chat interview."""
+    current = st.session_state.chat_current_question_index
+    total = len(st.session_state.chat_questions_data)
+
+    if total > 0:
+        progress = min(current / total, 1.0)
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.progress(progress)
+        with col2:
+            st.caption(f"Q {min(current + 1, total)}/{total}")
+
+
+def handle_chat_setup_phase() -> None:
+    """Handle the setup phase of chat interview with conversational selection."""
+    from db_models import Person, InterviewTemplate, TemplateQuestion, PersonStatus
+
+    # Initialize welcome message if chat is empty
+    if not st.session_state.chat_messages:
+        add_chat_message(
+            "assistant",
+            "Welcome to the Interview! 👋 I'll guide you through the process. Let's get started.",
+            "welcome"
+        )
+
+    # Check what step we're at in setup
+    person_selected = st.session_state.chat_person_data is not None
+    template_selected = st.session_state.chat_template_data is not None
+
+    if not person_selected:
+        # Need to select person
+        # Show prompt if not already shown
+        last_msg = st.session_state.chat_messages[-1] if st.session_state.chat_messages else {}
+        if last_msg.get("type") != "person_prompt":
+            add_chat_message(
+                "assistant",
+                "Who will be taking this interview today?",
+                "person_prompt"
+            )
+            st.rerun()
+
+        # Show person selection buttons
+        with get_db_session() as db:
+            people = db.execute(
+                select(Person).where(Person.status == PersonStatus.ACTIVE).order_by(Person.name)
+            ).scalars().all()
+            people_data = [(p.id, p.name, p.role, p.department) for p in people]
+
+        if not people_data:
+            st.warning("No active people found. Please add people in Admin view first.")
+            if st.button("Go to Admin"):
+                st.session_state.chat_interview_phase = "setup"
+                reset_chat_interview_state()
+            return
+
+        st.write("**Select participant:**")
+        cols = st.columns(min(len(people_data), 3))
+        for i, (pid, name, role, dept) in enumerate(people_data):
+            with cols[i % 3]:
+                if st.button(f"👤 {name}", key=f"person_{pid}", use_container_width=True):
+                    st.session_state.chat_person_data = {
+                        "id": pid, "name": name, "role": role, "department": dept
+                    }
+                    add_chat_message("user", f"I'm {name}", "person_selection")
+                    st.rerun()
+
+    elif not template_selected:
+        # Need to select template
+        # Show prompt if not already shown
+        last_msg = st.session_state.chat_messages[-1] if st.session_state.chat_messages else {}
+        if last_msg.get("type") != "template_prompt":
+            person_name = st.session_state.chat_person_data["name"]
+            add_chat_message(
+                "assistant",
+                f"Great to meet you, {person_name}! Which interview template would you like to use?",
+                "template_prompt"
+            )
+            st.rerun()
+
+        # Show template selection
+        with get_db_session() as db:
+            templates = db.execute(
+                select(InterviewTemplate).where(InterviewTemplate.active == True).order_by(InterviewTemplate.name)
+            ).scalars().all()
+            templates_data = []
+            for t in templates:
+                question_count = db.execute(
+                    select(func.count()).where(TemplateQuestion.template_id == t.id)
+                ).scalar()
+                templates_data.append({
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description,
+                    "version": t.version,
+                    "question_count": question_count
+                })
+
+        if not templates_data:
+            st.warning("No active templates found. Please create templates in Admin view first.")
+            if st.button("Go to Admin"):
+                reset_chat_interview_state()
+            return
+
+        st.write("**Select template:**")
+        for t in templates_data:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"**{t['name']}** (v{t['version']})")
+                if t['description']:
+                    st.caption(t['description'])
+            with col2:
+                if st.button(f"Select ({t['question_count']} Q)", key=f"template_{t['id']}"):
+                    st.session_state.chat_template_data = t
+                    add_chat_message("user", f"I'll take the {t['name']} interview", "template_selection")
+                    st.rerun()
+
+    else:
+        # Both selected - show confirmation
+        last_msg = st.session_state.chat_messages[-1] if st.session_state.chat_messages else {}
+        if last_msg.get("type") != "confirmation":
+            person = st.session_state.chat_person_data
+            template = st.session_state.chat_template_data
+            add_chat_message(
+                "assistant",
+                f"Perfect! Ready to begin **{template['name']}** with {template['question_count']} questions.",
+                "confirmation"
+            )
+            st.rerun()
+
+        # Show start button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🚀 Start Interview", use_container_width=True, type="primary"):
+                start_chat_interview()
+
+
+def start_chat_interview() -> None:
+    """Initialize the chat interview session and load questions."""
+    from db_models import InterviewSession, InterviewTemplate, TemplateQuestion, SessionStatus
+
+    person = st.session_state.chat_person_data
+    template = st.session_state.chat_template_data
+
+    # Create session in database
+    with get_db_session() as db:
+        # Get organization ID (use person's org or default to 1)
+        org_id = 1  # Default org
+
+        session = InterviewSession(
+            person_id=person["id"],
+            template_id=template["id"],
+            organization_id=org_id,
+            status=SessionStatus.IN_PROGRESS
+        )
+        db.add(session)
+        db.flush()
+        session_id = session.id
+
+        # Load questions for the template
+        questions = db.execute(
+            select(TemplateQuestion)
+            .where(TemplateQuestion.template_id == template["id"])
+            .order_by(TemplateQuestion.order_index)
+        ).scalars().all()
+
+        questions_data = [{
+            "id": q.id,
+            "question_text": q.question_text,
+            "competency": q.competency,
+            "difficulty": q.difficulty,
+            "keypoints": q.keypoints or []
+        } for q in questions]
+
+    # Store in session state
+    st.session_state.chat_session_id = session_id
+    st.session_state.chat_questions_data = questions_data
+    st.session_state.chat_current_question_index = 0
+    st.session_state.chat_interview_phase = "active"
+
+    # Add first question
+    if questions_data:
+        q = questions_data[0]
+        add_chat_message(
+            "assistant",
+            q["question_text"],
+            "question",
+            {
+                "question_index": 0,
+                "competency": q["competency"],
+                "difficulty": q["difficulty"]
+            }
+        )
+
+    st.rerun()
+
+
+def handle_chat_active_phase() -> None:
+    """Handle the active interview phase with chat input."""
+    questions = st.session_state.chat_questions_data
+    current_idx = st.session_state.chat_current_question_index
+
+    if current_idx >= len(questions):
+        # All questions answered - move to complete phase
+        complete_chat_interview()
+        return
+
+    session_id = st.session_state.chat_session_id
+    is_paused = st.session_state.chat_interview_paused
+
+    # Paused banner when admin is present
+    if is_paused:
+        st.warning("⏸️ **Interview Paused** - An administrator is reviewing your session. Please wait for instructions.")
+
+    # Chat input for answer (disabled when paused)
+    if not is_paused:
+        if prompt := st.chat_input("Type your answer here...", key="chat_answer_input"):
+            if prompt.strip():
+                # Add user's answer to chat
+                add_chat_message("user", prompt.strip(), "answer")
+
+                # Process the answer
+                process_chat_answer(prompt.strip())
+    else:
+        # Show disabled input message
+        st.chat_input("Chat paused - waiting for administrator...", key="chat_paused_input", disabled=True)
+
+    # Raise/Lower Hand buttons
+    st.divider()
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        if st.session_state.chat_hand_raised:
+            st.info("🙋 Hand raised - waiting for administrator to join...")
+        elif is_paused:
+            st.info("👨‍💼 Administrator is in the session")
+
+    with col2:
+        if not st.session_state.chat_hand_raised and not is_paused:
+            if st.button("🙋 Raise Hand", use_container_width=True, help="Request administrator assistance"):
+                if raise_hand(session_id):
+                    st.session_state.chat_hand_raised = True
+                    add_chat_message(
+                        "assistant",
+                        "🙋 You've raised your hand. An administrator will join shortly.",
+                        "paused"
+                    )
+                    st.rerun()
+                else:
+                    st.error("Failed to raise hand. Please try again.")
+
+    with col3:
+        if st.session_state.chat_hand_raised and not is_paused:
+            if st.button("✋ Lower Hand", use_container_width=True, help="Cancel assistance request"):
+                if lower_hand(session_id):
+                    st.session_state.chat_hand_raised = False
+                    add_chat_message(
+                        "assistant",
+                        "✋ You've lowered your hand. Assistance request cancelled.",
+                        "paused"
+                    )
+                    st.rerun()
+                else:
+                    st.error("Failed to lower hand. Please try again.")
+
+
+def process_chat_answer(answer: str) -> None:
+    """Process the user's answer: evaluate, store, and advance."""
+    from db_models import TranscriptEntry, QuestionEvaluation, SpeakerType, MasteryLabel, EvaluatorType
+
+    questions = st.session_state.chat_questions_data
+    current_idx = st.session_state.chat_current_question_index
+    session_id = st.session_state.chat_session_id
+
+    if current_idx >= len(questions):
+        return
+
+    current_question = questions[current_idx]
+
+    # Get evaluator
+    evaluator = get_evaluator_agent()
+
+    # Convert to Question object for evaluation
+    question_obj = Question(
+        id=current_question["id"],
+        text=current_question["question_text"],
+        competency=current_question["competency"],
+        difficulty=current_question["difficulty"],
+        keypoints=current_question["keypoints"]
+    )
+
+    # Evaluate with loading indicator
+    eval_mode = st.session_state.get('evaluator_mode', 'Heuristic')
+    spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode == "LLM-Powered" else "Evaluating answer..."
+
+    # Note: We can't use spinner inside chat flow easily, evaluation happens synchronously
+    evaluation = evaluator.evaluate(question_obj, answer)
+
+    # Store in database
+    with get_db_session() as db:
+        # Get max sequence index
+        max_seq = db.execute(
+            select(func.max(TranscriptEntry.sequence_index)).where(
+                TranscriptEntry.session_id == session_id
+            )
+        ).scalar() or -1
+
+        # Store question as SYSTEM transcript entry
+        db.add(TranscriptEntry(
+            session_id=session_id,
+            sequence_index=max_seq + 1,
+            speaker=SpeakerType.SYSTEM,
+            text=current_question["question_text"]
+        ))
+
+        # Store answer as PARTICIPANT transcript entry
+        db.add(TranscriptEntry(
+            session_id=session_id,
+            sequence_index=max_seq + 2,
+            speaker=SpeakerType.PARTICIPANT,
+            text=answer
+        ))
+
+        # Store evaluation
+        mastery_map = {"strong": MasteryLabel.STRONG, "mixed": MasteryLabel.MIXED, "weak": MasteryLabel.WEAK}
+
+        db.add(QuestionEvaluation(
+            session_id=session_id,
+            template_question_id=current_question["id"],
+            evaluator_type=EvaluatorType.HEURISTIC if eval_mode == "Heuristic" else EvaluatorType.LLM,
+            score_0_100=evaluation.score_0_100,
+            mastery_label=mastery_map[evaluation.mastery_label],
+            raw_answer=answer,
+            short_feedback=evaluation.short_feedback,
+            keypoints_coverage=[
+                {"keypoint": kp.keypoint, "covered": kp.covered, "evidence": kp.evidence}
+                for kp in evaluation.keypoints_coverage
+            ],
+            suggested_followup=evaluation.suggested_followup
+        ))
+
+        db.flush()
+
+    # Add evaluation message to chat
+    add_chat_message(
+        "assistant",
+        evaluation.short_feedback,
+        "evaluation",
+        {
+            "score": evaluation.score_0_100,
+            "mastery": evaluation.mastery_label,
+            "keypoints_coverage": [
+                {"keypoint": kp.keypoint, "covered": kp.covered}
+                for kp in evaluation.keypoints_coverage
+            ],
+            "suggested_followup": evaluation.suggested_followup
+        }
+    )
+
+    # Advance to next question
+    st.session_state.chat_current_question_index += 1
+    next_idx = st.session_state.chat_current_question_index
+
+    if next_idx < len(questions):
+        # Add next question
+        q = questions[next_idx]
+        add_chat_message(
+            "assistant",
+            q["question_text"],
+            "question",
+            {
+                "question_index": next_idx,
+                "competency": q["competency"],
+                "difficulty": q["difficulty"]
+            }
+        )
+    else:
+        # All questions done - complete interview
+        complete_chat_interview()
+
+    st.rerun()
+
+
+def complete_chat_interview() -> None:
+    """Complete the chat interview and show summary."""
+    from db_models import InterviewSession, QuestionEvaluation, SessionStatus
+
+    session_id = st.session_state.chat_session_id
+    st.session_state.chat_interview_phase = "complete"
+
+    # Update session status and calculate summary
+    with get_db_session() as db:
+        session = db.get(InterviewSession, session_id)
+        if session:
+            session.status = SessionStatus.COMPLETED
+
+            # Get evaluations for summary
+            evaluations = db.execute(
+                select(QuestionEvaluation).where(QuestionEvaluation.session_id == session_id)
+            ).scalars().all()
+
+            if evaluations:
+                scores = [e.score_0_100 for e in evaluations]
+                avg_score = sum(scores) / len(scores)
+                strong_count = sum(1 for e in evaluations if e.mastery_label.value == "strong")
+                weak_count = sum(1 for e in evaluations if e.mastery_label.value == "weak")
+
+                summary = f"""
+## 🎉 Interview Complete!
+
+**Summary for {st.session_state.chat_person_data['name']}**
+
+- **Template:** {st.session_state.chat_template_data['name']}
+- **Questions:** {len(evaluations)}
+- **Average Score:** {avg_score:.1f}/100
+- **Strong Answers:** {strong_count}
+- **Weak Answers:** {weak_count}
+
+{'Great job! 🌟' if avg_score >= 80 else 'Good effort! Keep practicing.' if avg_score >= 50 else 'Room for improvement. Review the feedback above.'}
+"""
+                session.summary = summary
+            else:
+                summary = "## 🎉 Interview Complete!\n\nNo evaluations recorded."
+
+            db.flush()
+
+    # Add summary message
+    add_chat_message("assistant", summary, "summary")
+    st.rerun()
+
+
+def handle_chat_complete_phase() -> None:
+    """Handle the completion phase with action buttons."""
+    # Action buttons
+    st.divider()
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("🔄 Start New Interview", use_container_width=True):
+            reset_chat_interview_state()
+            st.rerun()
+
+    with col2:
+        if st.button("📊 View Reports", use_container_width=True):
+            # This will need user to manually navigate
+            st.info("Navigate to Reports view to see detailed session history")
+
+    with col3:
+        if st.button("🏠 Go Home", use_container_width=True):
+            reset_chat_interview_state()
+            st.rerun()
+
+
+def render_chat_interview_view() -> None:
+    """Main entry point for the chat interview view."""
+    if not DATABASE_AVAILABLE:
+        st.error("Chat Interview requires database features. Please ensure database is properly configured.")
+        return
+
+    st.header("💬 Chat Interview")
+
+    # Polling during active phase - check for admin presence and new messages
+    if st.session_state.chat_interview_phase == "active" and st.session_state.chat_session_id:
+        # Auto-refresh every 3 seconds
+        poll_count = st_autorefresh(interval=3000, key="chat_poll")
+
+        # Poll for changes when count increases
+        if poll_count > st.session_state.chat_last_poll_count:
+            st.session_state.chat_last_poll_count = poll_count
+            session_id = st.session_state.chat_session_id
+
+            # Check for status changes and new messages
+            state_changed = poll_session_status(session_id)
+
+            if state_changed:
+                # Check if admin joined/left
+                metadata = get_session_metadata(session_id)
+                admin_present = metadata.get("admin_joined", False)
+
+                if admin_present and not st.session_state.chat_admin_present:
+                    # Admin just joined
+                    st.session_state.chat_admin_present = True
+                    st.session_state.chat_interview_paused = True
+                    add_chat_message(
+                        "assistant",
+                        "⏸️ Interview paused - An administrator has joined the session.",
+                        "paused"
+                    )
+                elif not admin_present and st.session_state.chat_admin_present:
+                    # Admin just left
+                    st.session_state.chat_admin_present = False
+                    st.session_state.chat_interview_paused = False
+                    add_chat_message(
+                        "assistant",
+                        "▶️ Interview resumed - Administrator has left the session.",
+                        "paused"
+                    )
+
+                # Fetch any new admin messages
+                new_entries = get_transcript_since(session_id, st.session_state.chat_last_transcript_seq)
+                for entry in new_entries:
+                    if entry["speaker"] == "admin":
+                        add_chat_message("assistant", entry["text"], "admin")
+                    st.session_state.chat_last_transcript_seq = entry["sequence_index"]
+
+                st.rerun()
+
+    # Progress indicator (only during active phase)
+    if st.session_state.chat_interview_phase == "active":
+        render_chat_progress_indicator()
+        st.divider()
+
+    # Display all chat messages
+    for message in st.session_state.chat_messages:
+        render_chat_message(message)
+
+    # Phase-specific handling
+    if st.session_state.chat_interview_phase == "setup":
+        handle_chat_setup_phase()
+    elif st.session_state.chat_interview_phase == "active":
+        handle_chat_active_phase()
+    elif st.session_state.chat_interview_phase == "complete":
+        handle_chat_complete_phase()
+
+
+def main() -> None:
+    """Main application entry point."""
+    # Check authentication first
+    if not check_password():
+        return
+
+    st.title("Agentic Interview System")
+
+    # Add logout button if password is configured
+    if LLM_AVAILABLE and hasattr(settings, 'APP_PASSWORD') and settings.APP_PASSWORD:
+        if st.sidebar.button("Logout"):
+            st.session_state.authenticated = False
+            st.rerun()
 
     # Initialize session state
     initialize_session_state()
@@ -2152,6 +3547,7 @@ def main():
     # Show Admin and Reports options only if database is available
     nav_options = ["Interviewer", "Interviewee"]
     if DATABASE_AVAILABLE:
+        nav_options.insert(2, "Chat Interview")  # Add after Interviewee
         nav_options.extend(["Reports", "Admin"])
 
     view = st.sidebar.radio(
@@ -2165,6 +3561,8 @@ def main():
         render_interviewer_view()
     elif view == "Interviewee":
         render_interviewee_view()
+    elif view == "Chat Interview":
+        render_chat_interview_view()
     elif view == "Reports":
         render_reports_view()
     elif view == "Admin":

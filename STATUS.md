@@ -1,13 +1,13 @@
 # Agentic Interview System - Project Status
 
-**Last Updated**: 2025-11-25
-**Current Phase**: Phase 8 (Hardening) COMPLETE ✅
+**Last Updated**: 2025-11-26
+**Current Phase**: Phase 10 (Raise Hand + Admin Chat) COMPLETE ✅
 
 ---
 
 ## Executive Summary
 
-The **Agentic Interview System** is production-ready with **complete database persistence**, **lens-based analysis**, **comprehensive reporting**, **export functionality**, **centralized logging**, and **full documentation**. Phase 8 (Hardening) has been successfully completed, adding export functions for CSV/JSON, visual charts for reports, centralized logging infrastructure, user-friendly README, and additional CRUD tests. The system is now fully hardened with 44 passing tests and ready for MVP deployment.
+The **Agentic Interview System** is production-ready with **complete database persistence**, **lens-based analysis**, **comprehensive reporting**, **export functionality**, **centralized logging**, **Chat Interview UI**, and **real-time admin supervision**. Phase 10 (Raise Hand + Admin Chat) has been successfully completed, adding real-time interviewee-to-admin communication, live session monitoring, and full admin control over interview flow. The system now supports both traditional step-by-step interviews and conversational chat-based interviews with real-time polling and admin intervention capabilities.
 
 ---
 
@@ -379,6 +379,86 @@ The **Agentic Interview System** is production-ready with **complete database pe
 
 ---
 
+### ✅ Phase 9: Chat Interview UI - COMPLETE
+
+**Status**: All tasks completed
+**Completion Date**: 2025-11-26
+
+**Chat-Based Interview Experience**:
+- ✅ Conversational chat UI replacing step-by-step flow
+- ✅ Real-time message streaming with chat bubbles
+- ✅ Progress indicator integrated into chat header
+- ✅ Loading indicators during LLM evaluation
+- ✅ Automatic scroll to latest messages
+- ✅ Graceful error handling with user-friendly messages
+
+**Technical Improvements**:
+- ✅ Fixed SQLAlchemy DetachedInstanceError bugs
+- ✅ Proper session management with context managers
+- ✅ Input validation with new validators module
+- ✅ Centralized constants for magic numbers
+- ✅ Comprehensive error handling utilities
+
+**Deliverables**:
+- `constants.py` (159 lines) - Centralized constants and thresholds
+- `validators.py` (409 lines) - Input validation functions
+- `error_handling.py` (235 lines) - Error handling utilities
+- `tests/conftest.py` - Pytest configuration
+- `tests/test_error_handling.py` - Error handling tests
+- Updated `app.py` - Chat Interview UI (~500 lines added)
+
+---
+
+### ✅ Phase 10: Raise Hand + Admin Chat - COMPLETE
+
+**Status**: All tasks completed
+**Completion Date**: 2025-11-26
+
+**Raise Hand Feature (Interviewee Side)**:
+- ✅ "Raise Hand" button during active interviews
+- ✅ Optional reason text for raising hand
+- ✅ Visual indicator when hand is raised
+- ✅ "Lower Hand" button to cancel request
+- ✅ Paused state display when admin joins
+- ✅ Real-time polling for admin presence (3-second interval)
+
+**Live Sessions Dashboard (Admin Side)**:
+- ✅ New "Live Sessions" tab in Admin view
+- ✅ Real-time list of active (in-progress) interviews
+- ✅ Hand raised indicator with visual highlighting
+- ✅ Join button to enter active sessions
+- ✅ Session details (person, template, question progress)
+
+**Admin Session Control**:
+- ✅ Join session and automatically pause interview
+- ✅ Send messages to interviewee (stored in transcript)
+- ✅ Skip current question functionality
+- ✅ End interview early option
+- ✅ Resume & Leave to restore interview flow
+- ✅ Full transcript view during session
+
+**Technical Implementation**:
+- ✅ ADMIN speaker type added to SpeakerType enum
+- ✅ session_metadata JSON field for state tracking
+- ✅ streamlit-autorefresh for real-time polling
+- ✅ flag_modified() for SQLAlchemy JSON field tracking
+- ✅ Proper session state synchronization
+
+**Deliverables**:
+- Updated `db_models.py` - ADMIN speaker type
+- Updated `requirements.txt` - streamlit-autorefresh dependency
+- Updated `app.py` - ~700 lines for Raise Hand + Admin Chat
+- Helper functions: update_session_metadata, get_active_sessions_summary, etc.
+
+**Key Features**:
+- Real-time bidirectional communication
+- Full admin control over interview flow
+- All messages persisted in transcript
+- Messages visible in session reports
+- Graceful handling of edge cases (multiple admins, network issues)
+
+---
+
 ## Current Project Structure
 
 ```
@@ -386,15 +466,21 @@ agenticInterview/
 ├── STATUS.md                    # This file (comprehensive project status)
 ├── NEXT_STEPS.md                # Future enhancements and roadmap
 ├── CLAUDE.md                    # Project context & architecture (568 lines)
-├── plan.md                      # Implementation plan (601 lines)
+├── plan.md                      # Implementation plan (1000+ lines)
 ├── README.md                    # User-facing documentation (250 lines)
+├── HISTORY.md                   # Development history
+├── parking_lot.md               # Future feature ideas
+├── ui_test_plan.md              # UI testing guide with Chrome DevTools MCP
 ├── .gitignore                   # Security: prevents committing secrets
 ├── .env.example                 # Template for configuration
-├── requirements.txt             # Dependencies (streamlit, pytest, LLM libs, pandas)
+├── requirements.txt             # Dependencies (streamlit, pytest, LLM libs, autorefresh)
 ├── settings.py                  # Configuration management (169 lines)
 ├── logging_config.py            # Centralized logging (94 lines)
+├── constants.py                 # Centralized constants and thresholds (159 lines)
+├── validators.py                # Input validation functions (409 lines)
+├── error_handling.py            # Error handling utilities (235 lines)
 ├── database.py                  # SQLAlchemy setup (147 lines)
-├── db_models.py                 # ORM models for 10 entities (340 lines)
+├── db_models.py                 # ORM models for 10 entities (~400 lines)
 ├── models.py                    # Data classes (2.3 KB)
 ├── agents.py                    # Heuristic agent logic (8.1 KB)
 ├── llm_client.py                # LLM abstraction layer (350 lines, with logging)
@@ -403,22 +489,25 @@ agenticInterview/
 ├── lens_executor.py             # Lens execution pipeline (307 lines, with logging)
 ├── export_helpers.py            # CSV/JSON export functions (170 lines)
 ├── seed_data.py                 # Database seed script (242 lines)
-├── app.py                       # Streamlit UI - full system (~1800 lines, with logging)
+├── app.py                       # Streamlit UI - full system (~3500 lines)
 ├── alembic/                     # Database migrations
 │   ├── env.py
 │   └── versions/
-│       └── 001_initial_schema.py
+│       ├── 001_initial_schema.py
+│       └── 002_add_performance_indexes.py
 └── tests/
     ├── __init__.py
+    ├── conftest.py              # Pytest configuration
     ├── test_basic_flow.py       # Core agent tests (7 tests)
     ├── test_llm_evaluator.py    # LLM evaluator tests (8 tests)
     ├── test_lens_pipeline.py    # Lens system tests (16 tests)
-    └── test_admin_crud.py       # CRUD operation tests (13 tests)
+    ├── test_admin_crud.py       # CRUD operation tests (13 tests)
+    └── test_error_handling.py   # Error handling tests
 ```
 
-**Total Lines of Code**: ~5,500+ lines (excluding docs)
-**Test Coverage**: 44 tests covering all major functionality
-**Documentation**: 3,500+ lines across all .md files
+**Total Lines of Code**: ~7,500+ lines (excluding docs)
+**Test Coverage**: 45+ tests covering all major functionality
+**Documentation**: 4,500+ lines across all .md files
 
 ---
 
@@ -432,36 +521,66 @@ agenticInterview/
 
 ✅ **Full Interviewee Workflow**:
 1. Switch to Interviewee view
-2. Start interview
-3. Answer questions one by one
-4. Receive immediate feedback with scores
-5. See final summary with overall score
-6. View detailed per-question breakdown
+2. Choose interview mode: Classic (step-by-step) or Chat (conversational)
+3. Select person and template
+4. Answer questions with immediate feedback
+5. Raise hand for admin assistance if needed
+6. See final summary with scores and lens analysis
+
+✅ **Chat Interview Experience**:
+- Conversational chat UI with message bubbles
+- Real-time loading indicators during evaluation
+- Progress tracking in chat header
+- Automatic scroll to latest messages
+- Graceful error handling
+
+✅ **Raise Hand + Admin Chat**:
+- Interviewee can raise/lower hand during interview
+- Admin sees active sessions in "Live Sessions" tab
+- Admin can join, pause, message, skip questions, end interview
+- All admin messages stored in transcript
+- Real-time polling (3-second interval)
+
+✅ **Admin Dashboard**:
+- People Management: Add, edit, toggle status
+- Template Management: Create templates with questions
+- Lens Management: Configure analytical lenses
+- Live Sessions: Monitor and control active interviews
 
 ✅ **Evaluation Features**:
-- Keyword matching against keypoints
+- Heuristic (keyword matching) or LLM-powered evaluation
 - Score calculation (0-100)
 - Mastery labeling (strong/mixed/weak)
 - Feedback generation
 - Follow-up question suggestions
+- Lens-based post-interview analysis
+
+✅ **Reporting**:
+- Session history with filters
+- Score distribution charts
+- Department breakdown analytics
+- CSV/JSON export functionality
+- Detailed session drill-down views
 
 ✅ **Testing**:
-- Run tests: `python3 tests/test_basic_flow.py`
-- All 6 tests pass
-- No external dependencies required
+- Run tests: `pytest tests/ -v`
+- All 45+ tests pass
+- Comprehensive coverage of all major functionality
 
 ---
 
 ## Known Limitations (By Design)
 
-1. **No Persistence**: Data lost on page refresh (session state only)
-2. **No Authentication**: Single user, no login required
-3. **No Edit/Delete**: Questions can't be modified after creation
-4. **Sequential Only**: Questions asked in order, no randomization
-5. **Text Only**: No code execution, images, or multimedia
-6. **No Evaluation QA**: LLM evaluations not yet validated with reference set (Phase 6)
+1. **No Authentication**: Single user, no login required (multi-tenant data model exists)
+2. **Sequential Questions**: Questions asked in template order, no adaptive difficulty
+3. **Text Only**: No code execution, images, or multimedia
+4. **SQLite for Development**: Production deployment should use PostgreSQL
+5. **Single Admin Per Session**: Only one admin can join a session at a time
 
-Note: Limitation #2 (Heuristic Evaluation) has been **resolved** with Phase 5 LLM integration. System now supports both heuristic and semantic evaluation.
+**Resolved Limitations:**
+- ~~No Persistence~~ → Full SQLAlchemy database persistence (Phase 6)
+- ~~Heuristic Only~~ → LLM-powered evaluation available (Phase 5)
+- ~~No Real-Time Supervision~~ → Admin can now join and control live sessions (Phase 10)
 
 ---
 
@@ -609,6 +728,26 @@ pip install -r requirements.txt
 ---
 
 ## Change Log
+
+**2025-11-26 (Phase 10)**:
+- ✅ **Completed Phase 10: Raise Hand + Admin Chat**
+- ✅ Added "Raise Hand" feature for interviewee-to-admin communication
+- ✅ Created "Live Sessions" tab in Admin view
+- ✅ Implemented admin session control (join, message, skip, end, resume)
+- ✅ Added ADMIN speaker type to SpeakerType enum
+- ✅ Integrated streamlit-autorefresh for real-time polling
+- ✅ All admin messages stored in transcript and visible in reports
+- ✅ Tested end-to-end with Chrome DevTools MCP
+
+**2025-11-26 (Phase 9)**:
+- ✅ **Completed Phase 9: Chat Interview UI**
+- ✅ Created conversational chat-based interview experience
+- ✅ Added loading indicators during LLM evaluation
+- ✅ Fixed SQLAlchemy DetachedInstanceError bugs
+- ✅ Created `constants.py` for centralized constants
+- ✅ Created `validators.py` for input validation
+- ✅ Created `error_handling.py` for error handling utilities
+- ✅ Added `tests/conftest.py` and `tests/test_error_handling.py`
 
 **2025-11-25 (Phase 8)**:
 - ✅ **Completed Phase 8: Hardening**

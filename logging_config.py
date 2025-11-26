@@ -97,3 +97,16 @@ except Exception as e:
     # Safe fallback: use basicConfig if configuration fails
     print(f"Warning: Failed to configure logging: {e}", file=sys.stderr)
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "get_logger",
+    "configure_logging",
+    "get_log_level_from_env",
+    "DEFAULT_LOG_LEVEL",
+    "LOG_FORMAT",
+]

@@ -354,3 +354,13 @@ if __name__ == "__main__":
 
     print("\n" + "="*60)
     print("LLMEvaluatorAgent tests complete!")
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "LLMEvaluatorAgent",
+    "EVALUATION_PROMPT_TEMPLATE",
+]

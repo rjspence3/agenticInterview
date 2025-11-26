@@ -2,16 +2,37 @@
 Configuration settings for Agentic Interview System.
 
 Loads configuration from environment variables (via .env file or system env).
-Provides validation and defaults for LLM integration.
+Provides validation and defaults for LLM integration, authentication, and app config.
 """
 
 import os
 from typing import Tuple
 from dotenv import load_dotenv
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Load .env file if it exists (for local development)
 # In production, use system environment variables instead
 load_dotenv()
+
+# ==============================================================================
+# Application Authentication
+# ==============================================================================
+
+# Simple shared password for app access (empty = no auth required)
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+
+# ==============================================================================
+# Organization Configuration
+# ==============================================================================
+
+# Default organization ID to use
+try:
+    DEFAULT_ORG_ID = int(os.getenv("DEFAULT_ORG_ID", "1"))
+except (ValueError, TypeError):
+    DEFAULT_ORG_ID = 1
+    logger.warning("Invalid DEFAULT_ORG_ID, using default 1")
 
 # ==============================================================================
 # LLM Provider Configuration
@@ -55,21 +76,39 @@ try:
     LLM_TEMPERATURE = max(0.0, min(1.0, LLM_TEMPERATURE))
 except (ValueError, TypeError):
     LLM_TEMPERATURE = 0.3
-    print("Warning: Invalid LLM_TEMPERATURE, using default 0.3")
+    logger.warning("Invalid LLM_TEMPERATURE, using default 0.3")
 
 # API timeout in seconds
 try:
     LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "30"))
 except (ValueError, TypeError):
     LLM_TIMEOUT = 30
-    print("Warning: Invalid LLM_TIMEOUT, using default 30")
+    logger.warning("Invalid LLM_TIMEOUT, using default 30")
 
 # Max retry attempts for transient failures
 try:
     LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 except (ValueError, TypeError):
     LLM_MAX_RETRIES = 2
-    print("Warning: Invalid LLM_MAX_RETRIES, using default 2")
+    logger.warning("Invalid LLM_MAX_RETRIES, using default 2")
+
+# ==============================================================================
+# Rate Limiting Configuration
+# ==============================================================================
+
+# Maximum LLM calls per session (prevents runaway costs)
+try:
+    LLM_MAX_CALLS_PER_SESSION = int(os.getenv("LLM_MAX_CALLS_PER_SESSION", "50"))
+except (ValueError, TypeError):
+    LLM_MAX_CALLS_PER_SESSION = 50
+    logger.warning("Invalid LLM_MAX_CALLS_PER_SESSION, using default 50")
+
+# Maximum LLM calls per minute (rate limiting)
+try:
+    LLM_MAX_CALLS_PER_MINUTE = int(os.getenv("LLM_MAX_CALLS_PER_MINUTE", "10"))
+except (ValueError, TypeError):
+    LLM_MAX_CALLS_PER_MINUTE = 10
+    logger.warning("Invalid LLM_MAX_CALLS_PER_MINUTE, using default 10")
 
 # ==============================================================================
 # Validation Functions

@@ -45,6 +45,108 @@ class LLMClient(Protocol):
 
 
 # ==============================================================================
+# Rate Limiter
+# ==============================================================================
+
+class RateLimiter:
+    """
+    Simple rate limiter to prevent excessive API calls.
+
+    Tracks calls per session and per minute to prevent cost overruns.
+    """
+
+    def __init__(
+        self,
+        max_calls_per_session: int = 50,
+        max_calls_per_minute: int = 10
+    ):
+        """
+        Initialize the rate limiter.
+
+        Args:
+            max_calls_per_session: Maximum total calls allowed per session
+            max_calls_per_minute: Maximum calls allowed per minute
+        """
+        self.max_calls_per_session = max_calls_per_session
+        self.max_calls_per_minute = max_calls_per_minute
+        self.session_calls = 0
+        self.minute_calls: list[float] = []  # Timestamps of calls in current minute
+
+    def check_rate_limit(self) -> tuple[bool, str]:
+        """
+        Check if a call is allowed under current rate limits.
+
+        Returns:
+            Tuple of (is_allowed, error_message)
+        """
+        current_time = time.time()
+
+        # Clean up old minute calls (older than 60 seconds)
+        self.minute_calls = [t for t in self.minute_calls if current_time - t < 60]
+
+        # Check session limit
+        if self.session_calls >= self.max_calls_per_session:
+            return False, f"Session limit reached ({self.max_calls_per_session} calls). Please start a new session."
+
+        # Check minute limit
+        if len(self.minute_calls) >= self.max_calls_per_minute:
+            wait_time = 60 - (current_time - self.minute_calls[0])
+            return False, f"Rate limit reached. Please wait {wait_time:.0f} seconds."
+
+        return True, ""
+
+    def record_call(self):
+        """Record that a call was made."""
+        self.session_calls += 1
+        self.minute_calls.append(time.time())
+        logger.debug(f"Rate limiter: session_calls={self.session_calls}, minute_calls={len(self.minute_calls)}")
+
+    def reset_session(self):
+        """Reset session call counter (e.g., when starting new interview)."""
+        self.session_calls = 0
+        logger.info("Rate limiter: session reset")
+
+    def get_usage_stats(self) -> dict:
+        """Get current usage statistics."""
+        current_time = time.time()
+        self.minute_calls = [t for t in self.minute_calls if current_time - t < 60]
+        return {
+            "session_calls": self.session_calls,
+            "session_limit": self.max_calls_per_session,
+            "minute_calls": len(self.minute_calls),
+            "minute_limit": self.max_calls_per_minute,
+            "session_remaining": self.max_calls_per_session - self.session_calls,
+            "minute_remaining": self.max_calls_per_minute - len(self.minute_calls),
+        }
+
+
+# Global rate limiter instance (can be configured at startup)
+_rate_limiter: RateLimiter | None = None
+
+
+def get_rate_limiter() -> RateLimiter:
+    """Get or create the global rate limiter instance."""
+    global _rate_limiter
+    if _rate_limiter is None:
+        # Try to get limits from settings
+        try:
+            import settings
+            _rate_limiter = RateLimiter(
+                max_calls_per_session=getattr(settings, 'LLM_MAX_CALLS_PER_SESSION', 50),
+                max_calls_per_minute=getattr(settings, 'LLM_MAX_CALLS_PER_MINUTE', 10)
+            )
+        except ImportError:
+            _rate_limiter = RateLimiter()
+    return _rate_limiter
+
+
+def reset_rate_limiter():
+    """Reset the global rate limiter (e.g., for new session)."""
+    limiter = get_rate_limiter()
+    limiter.reset_session()
+
+
+# ==============================================================================
 # Retry Decorator
 # ==============================================================================
 
@@ -430,3 +532,25 @@ Evaluate this answer...
     print("\nMock Response:")
     print(response)
     print("\nMockLLMClient test passed!")
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    # Protocol
+    "LLMClient",
+    # Client implementations
+    "OpenAIClient",
+    "AnthropicClient",
+    "MockLLMClient",
+    # Factory
+    "get_llm_client",
+    # Rate limiting
+    "RateLimiter",
+    "get_rate_limiter",
+    "reset_rate_limiter",
+    # Retry decorator
+    "retry_on_failure",
+]

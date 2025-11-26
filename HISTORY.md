@@ -1,7 +1,7 @@
 # Development History - Agentic Interview System
 
-**Last Updated:** 2025-11-25
-**Current Status:** Phase 7 (Lenses & Reporting) - 92% Complete (12 of 13 tasks)
+**Last Updated:** 2025-11-26
+**Current Status:** Phase 10 (Raise Hand + Admin Chat) - COMPLETE ✅
 
 ---
 
@@ -273,7 +273,7 @@
 
 ---
 
-## Phase 7: Lenses & Reporting (In Progress - 92% Complete)
+## Phase 7: Lenses & Reporting (Completed 2025-11-25)
 
 ### Database Models for Lenses
 **Date:** 2025-11-25 (Evening)
@@ -484,11 +484,9 @@ Each lens includes:
 
 ### Phase 7 Progress Summary (Final)
 
-**Completed Tasks:** 12 of 13 (92%)
+**Completed Tasks:** 13 of 13 (100%)
 
-**Remaining:** Export functionality (CSV, JSON) - Optional enhancement
-
-**Total New Code:** ~1,400 lines
+**Total New Code:** ~1,700 lines
 **Files Created:** 3 (lens_prompt_builder.py, lens_executor.py, test_lens_pipeline.py)
 **Files Modified:** 3 (db_models.py, seed_data.py, app.py)
 **Database Tables Added:** 3
@@ -507,22 +505,134 @@ Each lens includes:
 - ✅ Full test coverage with integration tests
 - ✅ Error handling and retry logic
 - ✅ Provider-agnostic architecture
+- ✅ Export functionality (CSV/JSON)
+
+---
+
+## Phase 8: Hardening (Completed 2025-11-25)
+
+### Export Functionality
+**Date:** 2025-11-25
+
+- ✅ Created `export_helpers.py` module
+- ✅ CSV export for filtered session lists
+- ✅ JSON export for complete session data
+- ✅ Timestamped filenames
+
+### Visual Analytics
+- ✅ Score distribution histogram
+- ✅ Department breakdown chart
+- ✅ Pandas DataFrame integration
+
+### Logging Infrastructure
+- ✅ Created `logging_config.py`
+- ✅ Configurable log levels via environment variable
+- ✅ Integrated logging into `llm_client.py`, `lens_executor.py`, `app.py`
+
+### Documentation & Testing
+- ✅ Created comprehensive `README.md`
+- ✅ Added 13 CRUD tests in `test_admin_crud.py`
+- ✅ All 44 tests passing
+
+**Files Created:**
+- `logging_config.py` (94 lines)
+- `export_helpers.py` (170 lines)
+- `tests/test_admin_crud.py` (459 lines)
+
+---
+
+## Phase 9: Chat Interview UI (Completed 2025-11-26)
+
+### Chat-Based Interview Experience
+**Date:** 2025-11-26
+
+- ✅ Conversational chat UI replacing step-by-step flow
+- ✅ Real-time message streaming with chat bubbles
+- ✅ Progress indicator in chat header
+- ✅ Loading indicators during LLM evaluation
+- ✅ Automatic scroll to latest messages
+
+### Technical Improvements
+- ✅ Fixed SQLAlchemy DetachedInstanceError bugs
+- ✅ Proper session management with context managers
+- ✅ Input validation with new validators module
+- ✅ Centralized constants for magic numbers
+- ✅ Comprehensive error handling utilities
+
+**Files Created:**
+- `constants.py` (159 lines) - Centralized constants and thresholds
+- `validators.py` (409 lines) - Input validation functions
+- `error_handling.py` (235 lines) - Error handling utilities
+- `tests/conftest.py` - Pytest configuration
+- `tests/test_error_handling.py` - Error handling tests
+
+---
+
+## Phase 10: Raise Hand + Admin Chat (Completed 2025-11-26)
+
+### Raise Hand Feature (Interviewee Side)
+**Date:** 2025-11-26
+
+- ✅ "Raise Hand" button during active interviews
+- ✅ Optional reason text for raising hand
+- ✅ Visual indicator when hand is raised
+- ✅ "Lower Hand" button to cancel request
+- ✅ Paused state display when admin joins
+- ✅ Real-time polling for admin presence (3-second interval)
+
+### Live Sessions Dashboard (Admin Side)
+- ✅ New "Live Sessions" tab in Admin view
+- ✅ Real-time list of active (in-progress) interviews
+- ✅ Hand raised indicator with visual highlighting
+- ✅ Join button to enter active sessions
+- ✅ Session details (person, template, question progress)
+
+### Admin Session Control
+- ✅ Join session and automatically pause interview
+- ✅ Send messages to interviewee (stored in transcript)
+- ✅ Skip current question functionality
+- ✅ End interview early option
+- ✅ Resume & Leave to restore interview flow
+- ✅ Full transcript view during session
+
+### Technical Implementation
+- ✅ ADMIN speaker type added to SpeakerType enum
+- ✅ session_metadata JSON field for state tracking
+- ✅ streamlit-autorefresh for real-time polling
+- ✅ flag_modified() for SQLAlchemy JSON field tracking
+- ✅ Proper session state synchronization
+
+**Files Modified:**
+- `db_models.py` - ADMIN speaker type
+- `requirements.txt` - streamlit-autorefresh dependency
+- `app.py` - ~700 lines for Raise Hand + Admin Chat
+
+**Key Helper Functions Added:**
+- `update_session_metadata()` - Update session JSON field
+- `get_session_metadata()` - Retrieve session state
+- `get_active_sessions_summary()` - Query active sessions
+- `raise_hand()` / `lower_hand()` - Interviewee controls
+- `join_session_as_admin()` / `leave_session_as_admin()` - Admin controls
+- `admin_send_message()` - Admin messaging
+- `poll_session_status()` - Real-time state checking
 
 ---
 
 ## Overall Project Statistics
 
 ### Codebase Size
-- **Total Production Code:** ~3,500 lines
-- **Test Code:** ~800 lines
-- **Documentation:** ~3,000 lines (markdown files)
-- **Configuration:** ~300 lines
+- **Total Production Code:** ~7,500 lines
+- **Test Code:** ~1,200 lines
+- **Documentation:** ~4,500 lines (markdown files)
+- **Configuration:** ~400 lines
 
 ### Files Created
 - **Phase 5:** 5 new files
 - **Phase 6:** 6 new files
-- **Phase 7:** 2 new files (so far)
-- **Total:** 13 new files
+- **Phase 7:** 3 new files
+- **Phase 8:** 3 new files
+- **Phase 9:** 5 new files
+- **Total:** 22+ new files
 
 ### Database
 - **Tables:** 10 (7 from Phase 6, 3 from Phase 7)
@@ -530,9 +640,9 @@ Each lens includes:
 - **Seed Data:** 5 people, 3 templates, 10 questions, 3 lenses
 
 ### Testing
-- **Unit Tests:** 15
-- **Integration Tests:** 17
-- **Total:** 32 tests (all passing)
+- **Unit Tests:** 20+
+- **Integration Tests:** 25+
+- **Total:** 45+ tests (all passing)
 
 ### Key Technologies
 - **Backend:** Python 3.11, SQLAlchemy 2.0, Alembic
@@ -628,40 +738,28 @@ Each lens includes:
 
 ---
 
-## Current Status: Ready for Next Phase
+## Current Status: All Phases Complete
 
-**Phase 7 Status:** 46% Complete (6 of 13 tasks done)
+**All 10 Phases Complete!**
 
 **What's Working:**
-- ✅ Complete lens analysis pipeline
-- ✅ 3 sample lenses ready for use
-- ✅ Database infrastructure in place
-- ✅ Prompt builder tested
-- ✅ Executor implemented
+- ✅ Complete interview system with chat UI
+- ✅ Heuristic and LLM-powered evaluation
+- ✅ Real-time admin supervision with Raise Hand
+- ✅ Lens-based post-interview analysis
+- ✅ Comprehensive reporting dashboard
+- ✅ Export functionality (CSV/JSON)
+- ✅ Full test coverage
 
-**What's Next:**
-- ⏳ Reporting dashboard with filters
-- ⏳ Session list view with sorting
-- ⏳ Session detail view with lens results
-- ⏳ Export functionality (CSV, JSON)
-- ⏳ Auto-run lenses after interviews
-- ⏳ Lens pipeline tests
-- ⏳ Complete Phase 7 testing
-
-**System is production-ready for:**
+**System is Production-Ready For:**
 - Creating and managing people
 - Creating and managing interview templates
-- Conducting database-backed interviews
-- Storing complete transcripts
+- Conducting database-backed interviews (classic or chat mode)
+- Real-time admin monitoring and intervention
 - Evaluating with heuristic or LLM
-- Applying lens analysis (via code, not UI yet)
-
-**System needs completion for:**
-- Viewing lens results in UI
-- Reporting and analytics dashboard
-- Automatic lens execution after interviews
-- Export features
+- Automatic lens analysis on completion
+- Comprehensive reporting and export
 
 ---
 
-*This history document tracks all development from MVP through current state. See `NEXT_STEPS.md` for remaining work.*
+*This history document tracks all development from MVP through current state. See `NEXT_STEPS.md` for future enhancements.*

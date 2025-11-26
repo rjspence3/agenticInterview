@@ -243,3 +243,14 @@ class OrchestratorAgent:
         summary_parts.append(f"\n{assessment}")
 
         return "\n".join(summary_parts)
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "QuestionsAgent",
+    "EvaluatorAgent",
+    "OrchestratorAgent",
+]

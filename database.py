@@ -6,7 +6,7 @@ Supports SQLite for development and PostgreSQL for production.
 """
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 import os

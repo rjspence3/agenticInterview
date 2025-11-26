@@ -147,12 +147,30 @@ def validate_lens_config(config: Dict[str, Any]) -> tuple[bool, str]:
     """
     Validate that a lens configuration is well-formed.
 
+    Performs strict validation including:
+    - Required fields presence
+    - Type checking
+    - String length limits
+    - Character validation (to prevent prompt injection)
+    - Scoring scale format
+
     Args:
         config: The lens configuration dictionary
 
     Returns:
         Tuple of (is_valid, error_message)
     """
+    import re
+    from constants import (
+        MAX_CRITERION_NAME_LENGTH,
+        MAX_CRITERION_DEFINITION_LENGTH,
+        MAX_CRITERIA_COUNT
+    )
+
+    # Check config is a dictionary
+    if not isinstance(config, dict):
+        return False, "Config must be a dictionary"
+
     # Check required fields
     if "criteria" not in config:
         return False, "Missing required field: criteria"
@@ -163,21 +181,74 @@ def validate_lens_config(config: Dict[str, Any]) -> tuple[bool, str]:
     if len(config["criteria"]) == 0:
         return False, "At least one criterion is required"
 
+    if len(config["criteria"]) > MAX_CRITERIA_COUNT:
+        return False, f"Too many criteria (max {MAX_CRITERIA_COUNT})"
+
+    # Valid name pattern: alphanumeric, underscores, spaces only
+    # This prevents prompt injection via special characters
+    valid_name_pattern = re.compile(r'^[\w\s\-]+$')
+
     # Validate each criterion
     for i, criterion in enumerate(config["criteria"]):
         if not isinstance(criterion, dict):
             return False, f"Criterion {i} must be a dictionary"
 
+        # Check required fields
         if "name" not in criterion:
             return False, f"Criterion {i} missing required field: name"
 
         if "definition" not in criterion:
             return False, f"Criterion {i} missing required field: definition"
 
+        # Validate name
+        name = criterion["name"]
+        if not isinstance(name, str):
+            return False, f"Criterion {i}: name must be a string"
+        if len(name) == 0:
+            return False, f"Criterion {i}: name cannot be empty"
+        if len(name) > MAX_CRITERION_NAME_LENGTH:
+            return False, f"Criterion {i}: name too long (max {MAX_CRITERION_NAME_LENGTH} chars)"
+        if not valid_name_pattern.match(name):
+            return False, f"Criterion {i}: name contains invalid characters (use only letters, numbers, spaces, hyphens, underscores)"
+
+        # Validate definition
+        definition = criterion["definition"]
+        if not isinstance(definition, str):
+            return False, f"Criterion {i}: definition must be a string"
+        if len(definition) == 0:
+            return False, f"Criterion {i}: definition cannot be empty"
+        if len(definition) > MAX_CRITERION_DEFINITION_LENGTH:
+            return False, f"Criterion {i}: definition too long (max {MAX_CRITERION_DEFINITION_LENGTH} chars)"
+
+        # Validate optional examples field
+        if "examples" in criterion:
+            examples = criterion["examples"]
+            if not isinstance(examples, list):
+                return False, f"Criterion {i}: examples must be a list"
+            for j, example in enumerate(examples):
+                if not isinstance(example, str):
+                    return False, f"Criterion {i}, example {j}: must be a string"
+                if len(example) > 200:
+                    return False, f"Criterion {i}, example {j}: too long (max 200 chars)"
+
     # Check scoring scale format
     scale = config.get("scoring_scale", "0-5")
-    if not isinstance(scale, str) or "-" not in scale:
-        return False, "scoring_scale must be a string in format 'min-max' (e.g., '0-5')"
+    if not isinstance(scale, str):
+        return False, "scoring_scale must be a string"
+    if "-" not in scale:
+        return False, "scoring_scale must be in format 'min-max' (e.g., '0-5')"
+
+    # Validate scale values are numeric
+    try:
+        parts = scale.split("-")
+        if len(parts) != 2:
+            return False, "scoring_scale must have exactly two values separated by '-'"
+        min_val = float(parts[0])
+        max_val = float(parts[1])
+        if min_val >= max_val:
+            return False, "scoring_scale min must be less than max"
+    except ValueError:
+        return False, "scoring_scale values must be numeric"
 
     return True, ""
 
@@ -291,3 +362,14 @@ def get_example_lens_config(lens_type: str = "debugging") -> Dict[str, Any]:
     }
 
     return configs.get(lens_type, configs["debugging"])
+
+
+# ==============================================================================
+# Public API
+# ==============================================================================
+
+__all__ = [
+    "build_lens_prompt",
+    "validate_lens_config",
+    "get_example_lens_config",
+]

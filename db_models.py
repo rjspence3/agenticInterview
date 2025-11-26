@@ -36,6 +36,7 @@ class SpeakerType(str, enum.Enum):
     """Type of speaker in a transcript."""
     SYSTEM = "system"
     PARTICIPANT = "participant"
+    ADMIN = "admin"  # Admin/moderator messages during raise hand
 
 
 class EvaluatorType(str, enum.Enum):

@@ -6,16 +6,19 @@ The Agentic Interview System enables organizations to conduct structured technic
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- **🧑‍💼 People & Organization Management**: Track candidates, roles, and departments
-- **📝 Interview Templates**: Create reusable interview templates with questions, competencies, and keypoints
-- **🤖 Dual Evaluation System**: Choose between fast heuristic evaluation or sophisticated LLM-based assessment
-- **🔍 Lens-Based Analysis**: Apply customizable analytical lenses to extract structured insights from interview transcripts
-- **📊 Reports & Analytics**: View performance trends, score distributions, and department breakdowns
-- **📥 Export Functionality**: Export session data as JSON and filtered reports as CSV
-- **🔐 Multi-Tenant Architecture**: Organization-scoped data with proper isolation
-- **📜 Full Audit Trail**: Complete transcript recording and traceability
+- **People & Organization Management**: Track candidates, roles, and departments
+- **Interview Templates**: Create reusable interview templates with questions, competencies, and keypoints
+- **Dual Evaluation System**: Choose between fast heuristic evaluation or sophisticated LLM-based assessment
+- **Chat Interview Mode**: Conversational chat-based interview experience with real-time feedback
+- **Raise Hand + Admin Chat**: Real-time interviewee-to-admin communication during interviews
+- **Live Session Monitoring**: Admins can monitor, join, and control active interview sessions
+- **Lens-Based Analysis**: Apply customizable analytical lenses to extract structured insights from interview transcripts
+- **Reports & Analytics**: View performance trends, score distributions, and department breakdowns
+- **Export Functionality**: Export session data as JSON and filtered reports as CSV
+- **Multi-Tenant Architecture**: Organization-scoped data with proper isolation
+- **Full Audit Trail**: Complete transcript recording and traceability
 
 ---
 
@@ -81,15 +84,17 @@ The Agentic Interview System enables organizations to conduct structured technic
 2. **Add People**: Create profiles for interviewees with roles, departments, and tags
 3. **Create Templates**: Build interview templates with questions, keypoints, and difficulty levels
 4. **Configure Lenses**: Define analytical lenses with custom criteria for post-interview analysis
+5. **Live Sessions**: Monitor active interviews, see raised hands, and join sessions to assist
 
 ### Conducting Interviews
 
 1. **Navigate to the Interviewee view** from the sidebar
 2. **Select Evaluator Mode**: Choose between Heuristic (fast, offline) or LLM-Powered (requires API key)
 3. **Choose Person and Template**: Select the interviewee and interview template
-4. **Start Interview**: Answer questions one by one
-5. **Receive Feedback**: Get immediate scores and feedback after each answer
-6. **View Summary**: See overall performance and lens analysis results (if LLM mode enabled)
+4. **Select Interview Mode**: Classic (step-by-step) or Chat (conversational experience)
+5. **Start Interview**: Answer questions with immediate feedback
+6. **Raise Hand** (optional): Request admin assistance if you need help
+7. **View Summary**: See overall performance and lens analysis results (if LLM mode enabled)
 
 ### Reports & Analytics
 
@@ -197,13 +202,13 @@ For detailed architectural context and development guidance:
 
 ---
 
-## 🎯 Current Limitations
+## Current Limitations
 
 - **No Voice/Video**: Text-based interviews only
-- **No Real-Time Supervision**: Interviews are self-paced
 - **Single-Tenant UI**: Multi-tenant data model exists but no UI for org switching
 - **No Authentication**: Security and user management not implemented
 - **SQLite for MVP**: Production deployment requires PostgreSQL
+- **Single Admin Per Session**: Only one admin can control a session at a time
 
 ---
 
