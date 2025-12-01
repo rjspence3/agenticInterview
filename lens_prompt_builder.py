@@ -77,13 +77,22 @@ Now analyze the transcript above and provide your assessment in the exact JSON f
 def _format_transcript(transcript: List[TranscriptEntry]) -> str:
     """Format transcript entries into a readable conversation."""
     lines = []
-    speaker_labels = {
-        SpeakerType.SYSTEM: "INTERVIEWER",
-        SpeakerType.PARTICIPANT: "CANDIDATE",
-        SpeakerType.ADMIN: "ADMIN",
-    }
+    # Provide clear labels for all known speaker types while keeping
+    # sensible defaults for any future roles that may be added.
+    speaker_labels = {speaker: speaker.value.upper() for speaker in SpeakerType}
+    speaker_labels.update(
+        {
+            SpeakerType.SYSTEM: "INTERVIEWER",
+            SpeakerType.PARTICIPANT: "CANDIDATE",
+        }
+    )
     for entry in transcript:
-        speaker_label = speaker_labels.get(entry.speaker, entry.speaker.value.upper())
+        if isinstance(entry.speaker, SpeakerType):
+            speaker_label = speaker_labels.get(entry.speaker, entry.speaker.value.upper())
+        elif hasattr(entry.speaker, "value"):
+            speaker_label = str(entry.speaker.value).upper()
+        else:
+            speaker_label = str(entry.speaker).upper()
         lines.append(f"[{speaker_label}]: {entry.text}")
 
     return "\n\n".join(lines)
