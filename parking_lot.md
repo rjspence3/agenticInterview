@@ -6,6 +6,16 @@ This document tracks potential future enhancements that are out of scope for the
 
 ## Agent Architecture Enhancements
 
+### LLM Evaluator Rollout
+**Priority**: High
+**Complexity**: Medium
+**Description**: Implement the LLM-backed evaluator end-to-end by routing to `LLMEvaluatorAgent` when API credentials are configured and ensuring a smooth fallback to the heuristic `EvaluatorAgent` when not available.
+
+**Implementation ideas**:
+- Add configuration guardrails that prefer `LLMEvaluatorAgent` when provider keys are present.
+- Reuse the existing `LLMEvaluatorAgent` interface to avoid UI changes.
+- Update orchestration/tests to validate the routing logic and error handling.
+
 ### Adaptive Interviewing
 **Priority**: Medium
 **Complexity**: High

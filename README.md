@@ -209,6 +209,7 @@ For detailed architectural context and development guidance:
 - **No Authentication**: Security and user management not implemented
 - **SQLite for MVP**: Production deployment requires PostgreSQL
 - **Single Admin Per Session**: Only one admin can control a session at a time
+- **Heuristic Evaluator Only**: The default `EvaluatorAgent` uses simple substring checks against keypoints and does not generate personalized follow-up questions or clarifications.
 
 ---
 
