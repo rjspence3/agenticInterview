@@ -57,6 +57,7 @@ class EvaluationResult:
         short_feedback: Brief feedback explaining the score
         suggested_followup: Optional suggestion for follow-up questions
         error: Optional error message if evaluation failed
+        error_details: Optional structured error metadata (e.g., code, fields)
     """
     question_id: int
     raw_answer: str
@@ -66,6 +67,7 @@ class EvaluationResult:
     short_feedback: str
     suggested_followup: Optional[str] = None
     error: Optional[str] = None
+    error_details: Optional[dict] = None
 
 
 @dataclass
