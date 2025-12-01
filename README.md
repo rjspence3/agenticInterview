@@ -20,6 +20,19 @@ The Agentic Interview System enables organizations to conduct structured technic
 - **Multi-Tenant Architecture**: Organization-scoped data with proper isolation
 - **Full Audit Trail**: Complete transcript recording and traceability
 
+## Evaluation roadmap and current heuristic limitations
+
+The default `EvaluatorAgent` uses a lightweight substring-based heuristic to stay fast and deterministic. This approach is acceptable for smoke-testing but has important limitations:
+- Misses paraphrased or synonymous concepts because it only checks for literal keypoint strings
+- Cannot judge answer accuracy or depth, which can over-score shallow responses
+- Generates at most one generic follow-up question and cannot probe multiple gaps
+- Treats any keyword hit as equal, under-weighting explanation quality and context
+
+To mitigate these gaps, the `LLMEvaluatorAgent` is the planned default whenever LLM credentials are configured. The transition plan is tracked in **parking_lot.md → LLM Evaluator Rollout** and will:
+- Auto-select the LLM evaluator when API keys are present while preserving heuristic fallback behavior
+- Provide semantic coverage, richer feedback, and keypoint-specific follow-ups for missing concepts
+- Add regression tests that cover both modes and the routing logic
+
 ---
 
 ## 🚀 Quick Start

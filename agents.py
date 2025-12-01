@@ -6,6 +6,17 @@ This module contains the core business logic split across three agents:
 - EvaluatorAgent: Evaluates answers against ground truth (heuristic for MVP)
 - OrchestratorAgent: Coordinates the interview flow
 
+Heuristic evaluation limitations (current state):
+- Relies on substring matching, so paraphrased or synonymous concepts are missed
+- Cannot judge depth/accuracy, which can inflate scores for shallow answers
+- Provides at most one generic follow-up and cannot chain clarifying questions
+- Over-weights literal keyword presence and under-weights explanation quality
+
+Transition plan to LLM-backed evaluation/richer follow-ups:
+- Prefer LLMEvaluatorAgent when API credentials are configured (see parking_lot.md)
+- Expand follow-up generation to probe each missing keypoint when score < 80
+- Preserve heuristic evaluator as a fast fallback with clearer expectations noted above
+
 No Streamlit dependencies - these are pure Python classes.
 """
 
@@ -65,12 +76,11 @@ class EvaluatorAgent:
         Returns:
             EvaluationResult with score, feedback, and keypoint coverage
         """
-        # TODO: Replace this heuristic with LLM-based evaluation
-        # Future LLM implementation should:
-        # - Use few-shot prompting with examples
-        # - Consider semantic similarity, not just keyword matching
-        # - Generate more nuanced feedback
-        # - Suggest meaningful follow-up questions
+        # NOTE: Heuristic scoring is intentionally lightweight; the LLM replacement
+        # plan with acceptance criteria is tracked in parking_lot.md under
+        # "LLM Evaluator Rollout". That rollout will introduce semantic scoring,
+        # richer feedback, and more targeted follow-ups when credentials are
+        # available.
 
         # Normalize answer for matching
         answer_lower = answer.lower().strip()
@@ -126,7 +136,6 @@ class EvaluatorAgent:
         else:
             short_feedback = f"Did not cover any of the {total_keypoints} expected keypoints."
 
-        # TODO: LLM would generate personalized follow-up questions
         suggested_followup = None
         if score < 80 and covered_count > 0:
             missed_points = [kp.keypoint for kp in coverage if not kp.covered]
