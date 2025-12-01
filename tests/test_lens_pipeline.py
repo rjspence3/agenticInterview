@@ -8,6 +8,7 @@ Tests the complete lens analysis workflow:
 - Database storage of results
 """
 
+import enum
 import pytest
 import json
 from datetime import datetime
@@ -237,6 +238,40 @@ class TestPromptBuilder:
         assert "[ADMIN]: Reminder to stay on topic." in prompt
         assert "[INTERVIEWER]: Primary question" in prompt
         assert "[CANDIDATE]: Primary answer" in prompt
+
+    def test_build_prompt_with_future_speaker_roles(self):
+        """Future speaker roles should be surfaced with clear labels."""
+
+        class CustomSpeaker(str, enum.Enum):
+            REVIEWER = "reviewer"
+
+        lens = Mock()
+        lens.name = "Future Roles Lens"
+        lens.description = "Lens with future roles"
+        lens.config = {
+            "criteria": [
+                {
+                    "name": "test_criterion",
+                    "definition": "A test",
+                    "examples": ["example"]
+                }
+            ],
+            "scoring_scale": "0-5",
+            "examples": []
+        }
+
+        session = Mock()
+        transcript = [
+            Mock(speaker=SpeakerType.ADMIN, text="Please follow the guidelines."),
+            Mock(speaker=CustomSpeaker.REVIEWER, text="Review note."),
+            Mock(speaker=SpeakerType.PARTICIPANT, text="Acknowledged."),
+        ]
+
+        prompt = build_lens_prompt(lens, session, transcript)
+
+        assert "[ADMIN]: Please follow the guidelines." in prompt
+        assert "[REVIEWER]: Review note." in prompt
+        assert "[CANDIDATE]: Acknowledged." in prompt
 
 
 class TestLensExecutor:
