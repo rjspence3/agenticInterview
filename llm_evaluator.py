@@ -150,6 +150,11 @@ class LLMEvaluatorAgent:
         Returns:
             EvaluationResult with score, feedback, and keypoint coverage
         """
+        self.logger.info(
+            "Starting LLM evaluation",
+            extra={"question_id": question.id, "model": self.model},
+        )
+
         # Step 1: Build prompt from template
         prompt = self._build_prompt(question, answer)
 
@@ -171,6 +176,10 @@ class LLMEvaluatorAgent:
         # Step 3: Parse JSON response
         try:
             result = self._parse_response(response_text, question, answer)
+            self.logger.info(
+                "LLM evaluation completed",
+                extra={"question_id": question.id, "model": self.model},
+            )
             return result
         except Exception as e:
             # Parsing failed, return error fallback

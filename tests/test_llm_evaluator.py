@@ -135,9 +135,11 @@ def test_llm_call_error_sets_error_and_logs(caplog):
     result = evaluator.evaluate(question, "answer")
 
     assert result.error is not None, "Error field should capture failure"
+    assert "Synthetic failure" in result.error, "Error message should describe failure"
     assert result.score_0_100 == 0, "Error should return zero score"
     assert any("LLM call failed" in record.message for record in caplog.records), "Error should be logged"
     assert any(getattr(record, "question_id", None) == question.id for record in caplog.records), "Log should include question context"
+    assert any(getattr(record, "model", None) == "mock" for record in caplog.records), "Log should include model context"
 
 
 def test_malformed_json_sets_error_and_logs(caplog):
@@ -160,9 +162,12 @@ def test_malformed_json_sets_error_and_logs(caplog):
     result = evaluator.evaluate(question, "answer")
 
     assert result.error is not None, "Error field should indicate parse failure"
+    assert "Parse error" in result.error, "Parse errors should be surfaced in error message"
     assert result.score_0_100 == 0, "Parse errors should return zero score"
     assert any("Response parsing failed" in record.message for record in caplog.records), "Parse error should be logged"
     assert any(getattr(record, "raw_response", None) == "not-json" for record in caplog.records), "Log should include raw response"
+    assert any(getattr(record, "question_id", None) == question.id for record in caplog.records), "Log should include question context"
+    assert any(getattr(record, "model", None) == "mock" for record in caplog.records), "Log should include model context"
 
 
 def test_error_fallback():
