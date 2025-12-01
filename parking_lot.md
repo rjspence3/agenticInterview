@@ -16,6 +16,12 @@ This document tracks potential future enhancements that are out of scope for the
 - Reuse the existing `LLMEvaluatorAgent` interface to avoid UI changes.
 - Update orchestration/tests to validate the routing logic and error handling.
 
+**Acceptance criteria**:
+- When an API key is configured, Orchestrator/Evaluator routing automatically selects `LLMEvaluatorAgent` without code changes to callers.
+- Heuristic evaluator remains available as an explicit fallback with a logged reason when LLM is unavailable or errors.
+- LLM evaluations return structured `EvaluationResult` objects with semantic coverage and keypoint-specific follow-ups for missing concepts.
+- Regression tests cover both evaluator modes and the switch-over logic.
+
 ### Adaptive Interviewing
 **Priority**: Medium
 **Complexity**: High
