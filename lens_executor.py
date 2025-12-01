@@ -151,13 +151,19 @@ class LensExecutor:
             lens_result.completed_at = datetime.now()
             db.flush()
 
+            # Log sanitized message for standard logs
             logger.error(
-                f"Lens execution failed: session_id={session_id}, lens_id={lens_id}, error={sanitized_message}"
+                "Lens execution failed: session_id=%s, lens_id=%s, error=%s",
+                session_id,
+                lens_id,
+                sanitized_message,
             )
             # Secure log with full stack trace for debugging if needed
             logger.debug(
-                f"Full error details for session_id={session_id}, lens_id={lens_id}",
-                exc_info=True,
+                "Full error details for session_id=%s, lens_id=%s (secure)",
+                session_id,
+                lens_id,
+                exc_info=e,
             )
 
             # Re-raise for caller to handle
