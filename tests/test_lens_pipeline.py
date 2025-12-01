@@ -133,6 +133,18 @@ class TestPromptBuilder:
         assert "What is Python?" in formatted
         assert "Python is a programming language" in formatted
 
+    def test_format_transcript_with_admin(self):
+        """Admin speakers should be labeled distinctly."""
+        transcript = [
+            Mock(speaker=SpeakerType.ADMIN, text="Please keep answers concise."),
+            Mock(speaker=SpeakerType.PARTICIPANT, text="Understood."),
+        ]
+
+        formatted = _format_transcript(transcript)
+
+        assert "[ADMIN]: Please keep answers concise." in formatted
+        assert "[CANDIDATE]: Understood." in formatted
+
     def test_format_criteria(self):
         """Test criteria formatting."""
         criteria = [
@@ -195,6 +207,36 @@ class TestPromptBuilder:
         assert "OUTPUT FORMAT" in prompt
         assert "Question" in prompt
         assert "Answer" in prompt
+
+    def test_build_prompt_with_admin_messages(self):
+        """Prompt should preserve admin speaker labels."""
+        lens = Mock()
+        lens.name = "Admin Lens"
+        lens.description = "Lens with admin messages"
+        lens.config = {
+            "criteria": [
+                {
+                    "name": "test_criterion",
+                    "definition": "A test",
+                    "examples": ["example"]
+                }
+            ],
+            "scoring_scale": "0-5",
+            "examples": []
+        }
+
+        session = Mock()
+        transcript = [
+            Mock(speaker=SpeakerType.ADMIN, text="Reminder to stay on topic."),
+            Mock(speaker=SpeakerType.SYSTEM, text="Primary question"),
+            Mock(speaker=SpeakerType.PARTICIPANT, text="Primary answer"),
+        ]
+
+        prompt = build_lens_prompt(lens, session, transcript)
+
+        assert "[ADMIN]: Reminder to stay on topic." in prompt
+        assert "[INTERVIEWER]: Primary question" in prompt
+        assert "[CANDIDATE]: Primary answer" in prompt
 
 
 class TestLensExecutor:

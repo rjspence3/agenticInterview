@@ -6,7 +6,7 @@ interview transcripts according to specific lens criteria.
 """
 
 from typing import List, Dict, Any
-from db_models import Lens, InterviewSession, TranscriptEntry
+from db_models import Lens, InterviewSession, TranscriptEntry, SpeakerType
 
 
 def build_lens_prompt(
@@ -77,8 +77,13 @@ Now analyze the transcript above and provide your assessment in the exact JSON f
 def _format_transcript(transcript: List[TranscriptEntry]) -> str:
     """Format transcript entries into a readable conversation."""
     lines = []
+    speaker_labels = {
+        SpeakerType.SYSTEM: "INTERVIEWER",
+        SpeakerType.PARTICIPANT: "CANDIDATE",
+        SpeakerType.ADMIN: "ADMIN",
+    }
     for entry in transcript:
-        speaker_label = "INTERVIEWER" if entry.speaker.value == "system" else "CANDIDATE"
+        speaker_label = speaker_labels.get(entry.speaker, entry.speaker.value.upper())
         lines.append(f"[{speaker_label}]: {entry.text}")
 
     return "\n\n".join(lines)
