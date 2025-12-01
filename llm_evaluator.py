@@ -8,8 +8,9 @@ Drop-in replacement for the heuristic EvaluatorAgent with same interface.
 """
 
 import json
-from typing import List
-from models import Question, EvaluationResult, KeypointCoverage
+
+from logging_config import get_logger
+from models import EvaluationResult, KeypointCoverage, Question
 from llm_client import LLMClient
 
 
@@ -134,6 +135,7 @@ class LLMEvaluatorAgent:
         self.llm_client = llm_client
         self.model = model
         self.temperature = temperature
+        self.logger = get_logger(__name__)
 
     def evaluate(self, question: Question, answer: str) -> EvaluationResult:
         """
@@ -160,7 +162,10 @@ class LLMEvaluatorAgent:
             )
         except Exception as e:
             # LLM call failed, return error fallback
-            print(f"LLM call failed: {e}")
+            self.logger.error(
+                "LLM call failed",
+                extra={"question_id": question.id, "model": self.model, "error": str(e)},
+            )
             return self._error_fallback(question, answer, str(e))
 
         # Step 3: Parse JSON response
@@ -169,8 +174,15 @@ class LLMEvaluatorAgent:
             return result
         except Exception as e:
             # Parsing failed, return error fallback
-            print(f"Response parsing failed: {e}")
-            print(f"Raw response: {response_text}")
+            self.logger.error(
+                "Response parsing failed",
+                extra={
+                    "question_id": question.id,
+                    "model": self.model,
+                    "error": str(e),
+                    "raw_response": response_text,
+                },
+            )
             return self._error_fallback(question, answer, f"Parse error: {e}")
 
     def _build_prompt(self, question: Question, answer: str) -> str:
@@ -253,7 +265,10 @@ class LLMEvaluatorAgent:
         # Validate mastery label
         mastery_label = data["mastery_label"]
         if mastery_label not in ["strong", "mixed", "weak"]:
-            print(f"Warning: Invalid mastery label '{mastery_label}', defaulting to 'mixed'")
+            self.logger.warning(
+                "Invalid mastery label; defaulting to 'mixed'",
+                extra={"question_id": question.id, "model": self.model, "mastery_label": mastery_label},
+            )
             mastery_label = "mixed"
 
         # Clamp score to 0-100
@@ -267,7 +282,8 @@ class LLMEvaluatorAgent:
             mastery_label=mastery_label,
             keypoints_coverage=coverage,
             short_feedback=data["feedback"],
-            suggested_followup=data.get("suggested_followup", "")
+            suggested_followup=data.get("suggested_followup", ""),
+            error=None,
         )
 
     def _error_fallback(self, question: Question, answer: str, error: str) -> EvaluationResult:
@@ -301,7 +317,8 @@ class LLMEvaluatorAgent:
             mastery_label="weak",
             keypoints_coverage=coverage,
             short_feedback=f"Unable to evaluate answer due to error: {error}",
-            suggested_followup="Please try again or use heuristic evaluator."
+            suggested_followup="Please try again or use heuristic evaluator.",
+            error=error,
         )
 
 

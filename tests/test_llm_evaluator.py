@@ -5,13 +5,14 @@ Tests the LLMEvaluatorAgent using MockLLMClient (no real API calls).
 Verifies prompt construction, response parsing, error handling, and interface compatibility.
 """
 
-import sys
+import logging
 import os
+import sys
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from models import Question, EvaluationResult, KeypointCoverage
+from models import EvaluationResult, KeypointCoverage, Question
 from llm_evaluator import LLMEvaluatorAgent
 from llm_client import MockLLMClient
 import json
@@ -112,6 +113,56 @@ def test_response_parsing_malformed_json():
     except ValueError:
         # Or it might raise ValueError, which is also acceptable
         print("✓ Malformed JSON raises ValueError (acceptable)")
+
+
+def test_llm_call_error_sets_error_and_logs(caplog):
+    """Simulate LLM call errors to ensure logging and error field are set."""
+    caplog.set_level(logging.ERROR)
+
+    class FailingLLMClient:
+        def call_llm(self, *args, **kwargs):
+            raise RuntimeError("Synthetic failure")
+
+    question = Question(
+        id="error-1",
+        text="What is a test?",
+        competency="Testing",
+        difficulty="Easy",
+        keypoints=["definition"],
+    )
+
+    evaluator = LLMEvaluatorAgent(FailingLLMClient(), "mock", 0.3)
+    result = evaluator.evaluate(question, "answer")
+
+    assert result.error is not None, "Error field should capture failure"
+    assert result.score_0_100 == 0, "Error should return zero score"
+    assert any("LLM call failed" in record.message for record in caplog.records), "Error should be logged"
+    assert any(getattr(record, "question_id", None) == question.id for record in caplog.records), "Log should include question context"
+
+
+def test_malformed_json_sets_error_and_logs(caplog):
+    """Ensure malformed JSON responses are logged and surfaced via error field."""
+    caplog.set_level(logging.ERROR)
+
+    class BadJSONClient:
+        def call_llm(self, *args, **kwargs):
+            return "not-json"
+
+    question = Question(
+        id="error-2",
+        text="Another test?",
+        competency="Testing",
+        difficulty="Medium",
+        keypoints=["item"],
+    )
+
+    evaluator = LLMEvaluatorAgent(BadJSONClient(), "mock", 0.3)
+    result = evaluator.evaluate(question, "answer")
+
+    assert result.error is not None, "Error field should indicate parse failure"
+    assert result.score_0_100 == 0, "Parse errors should return zero score"
+    assert any("Response parsing failed" in record.message for record in caplog.records), "Parse error should be logged"
+    assert any(getattr(record, "raw_response", None) == "not-json" for record in caplog.records), "Log should include raw response"
 
 
 def test_error_fallback():
