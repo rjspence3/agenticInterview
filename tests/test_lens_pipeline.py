@@ -479,6 +479,30 @@ class TestLensExecutorIntegration:
         assert len(cr1.supporting_quotes) == 1
         assert cr1.notes == "Good systematic thinking"
 
+    def test_execute_lens_sanitizes_error_and_marks_failed(self, db_session, sample_session, sample_lens):
+        """Test that errors are sanitized and status transitions to FAILED."""
+        session_id, _ = sample_session
+
+        # Create mock LLM client that raises an error containing a secret
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "MockLLMClient"
+        mock_client.call_llm.side_effect = ValueError("API key sk-12345678901234567890 is invalid")
+
+        executor = LensExecutor(mock_client)
+
+        with pytest.raises(ValueError):
+            executor.execute_lens(db_session, session_id, sample_lens)
+
+        lens_result = (
+            db_session.query(LensResult)
+            .filter_by(session_id=session_id, lens_id=sample_lens)
+            .one()
+        )
+
+        assert lens_result.status == LensResultStatus.FAILED
+        assert "[REDACTED]" in lens_result.error_message
+        assert "sk-12345678901234567890" not in lens_result.error_message
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

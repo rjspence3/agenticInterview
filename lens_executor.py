@@ -16,6 +16,7 @@ from db_models import (
 )
 from lens_prompt_builder import build_lens_prompt
 from llm_client import LLMClient
+from error_handling import sanitize_error_message
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -142,13 +143,22 @@ class LensExecutor:
             return lens_result
 
         except Exception as e:
-            # Mark as failed
+            sanitized_message = sanitize_error_message(e)
+
+            # Mark as failed with sanitized error
             lens_result.status = LensResultStatus.FAILED
-            lens_result.error_message = str(e)
+            lens_result.error_message = sanitized_message
             lens_result.completed_at = datetime.now()
             db.flush()
 
-            logger.error(f"Lens execution failed: session_id={session_id}, lens_id={lens_id}, error={str(e)}")
+            logger.error(
+                f"Lens execution failed: session_id={session_id}, lens_id={lens_id}, error={sanitized_message}"
+            )
+            # Secure log with full stack trace for debugging if needed
+            logger.debug(
+                f"Full error details for session_id={session_id}, lens_id={lens_id}",
+                exc_info=True,
+            )
 
             # Re-raise for caller to handle
             raise
