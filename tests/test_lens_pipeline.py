@@ -521,9 +521,12 @@ class TestLensExecutorIntegration:
         assert len(cr1.supporting_quotes) == 1
         assert cr1.notes == "Good systematic thinking"
 
-    def test_execute_lens_sanitizes_error_and_marks_failed(self, db_session, sample_session, sample_lens):
+    def test_execute_lens_sanitizes_error_and_marks_failed(self, db_session, sample_session, sample_lens, caplog):
         """Test that errors are sanitized and status transitions to FAILED."""
         session_id, _ = sample_session
+
+        # Capture logs to ensure only sanitized content is emitted
+        caplog.set_level("DEBUG", logger="lens_executor")
 
         # Create mock LLM client that raises an error containing a secret
         mock_client = Mock()
@@ -544,6 +547,10 @@ class TestLensExecutorIntegration:
         assert lens_result.status == LensResultStatus.FAILED
         assert "[REDACTED]" in lens_result.error_message
         assert "sk-12345678901234567890" not in lens_result.error_message
+
+        # Ensure sanitized message is logged while secret is not present in standard logs
+        assert any("[REDACTED]" in message for message in caplog.messages)
+        assert all("sk-12345678901234567890" not in message for message in caplog.messages)
 
 
 if __name__ == "__main__":
