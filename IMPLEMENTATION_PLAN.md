@@ -186,9 +186,9 @@ def validate_llm_config() -> tuple[bool, str]:
 from typing import Protocol
 
 class LLMClient(Protocol):
-    def call_llm(self, prompt: str, model: str, temperature: float) -> str:
+    def call_llm(self, prompt: str, model: str, temperature: float, timeout: int = 30) -> str:
         """Call LLM and return response text."""
-        ...
+        ...  # Implemented by provider-specific clients in llm_client.py
 ```
 
 **Option B: Abstract Base Class**
@@ -199,10 +199,10 @@ class LLMClient(ABC):
     @abstractmethod
     def call_llm(self, prompt: str, model: str, temperature: float) -> str:
         """Call LLM and return response text."""
-        pass
+        ...
 ```
 
-**Recommendation**: Use Protocol for lighter weight, ABC if you need shared logic
+**Recommendation**: Use Protocol for lighter weight, ABC if you need shared logic. Concrete implementations (OpenAI, Anthropic, mock) are already in `llm_client.py`.
 
 ---
 
@@ -381,10 +381,18 @@ class LLMEvaluatorAgent:
 
         Same interface as EvaluatorAgent.evaluate().
         """
-        pass  # Implement in next tasks
+        return self._parse_response(
+            self.llm_client.call_llm(
+                prompt=self._build_prompt(question, answer),
+                model=self.model,
+                temperature=self.temperature,
+            ),
+            question,
+            answer,
+        )
 ```
 
-**Design note**: Takes LLMClient as dependency injection for testability
+**Design note**: Takes LLMClient as dependency injection for testability. The concrete flow (prompt build → LLM call → response parsing → error fallback) is implemented in `llm_evaluator.py` with logging and safe defaults.
 
 ---
 
@@ -676,6 +684,14 @@ def test_mock_client():
 ```
 
 **All tests use MockLLMClient** - no real API calls
+
+---
+
+## Remaining Gaps & Future Enhancements
+
+- **Rate limiting integration**: `llm_client.RateLimiter` exists but is not yet wired into the provider clients; integrate checks and usage reporting before high-volume runs.
+- **Heuristic fallback handoff**: Current `llm_evaluator.py` returns an error-flavored `EvaluationResult` on failures instead of delegating to the heuristic evaluator; add an optional fallback hook if production requires seamless degradation.
+- **UI toggles and telemetry**: Document or add UI controls to switch between heuristic/LLM evaluators and log model usage to observe costs during rollouts.
 
 ---
 
