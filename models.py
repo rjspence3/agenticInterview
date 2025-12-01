@@ -56,6 +56,7 @@ class EvaluationResult:
         keypoints_coverage: Detailed coverage for each keypoint
         short_feedback: Brief feedback explaining the score
         suggested_followup: Optional suggestion for follow-up questions
+        error: Optional error message if evaluation failed
     """
     question_id: int
     raw_answer: str
@@ -64,6 +65,7 @@ class EvaluationResult:
     keypoints_coverage: list[KeypointCoverage]
     short_feedback: str
     suggested_followup: Optional[str] = None
+    error: Optional[str] = None
 
 
 @dataclass
