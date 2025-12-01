@@ -13,6 +13,7 @@ from streamlit_autorefresh import st_autorefresh
 from models import Question, InterviewState
 from agents import QuestionsAgent, EvaluatorAgent, OrchestratorAgent
 from logging_config import get_logger
+import settings
 
 logger = get_logger(__name__)
 
@@ -20,7 +21,6 @@ logger = get_logger(__name__)
 try:
     from llm_evaluator import LLMEvaluatorAgent
     from llm_client import get_llm_client
-    import settings
     LLM_AVAILABLE = True
 except ImportError as e:
     LLM_AVAILABLE = False
@@ -2809,7 +2809,7 @@ def check_password() -> bool:
     Returns False if password is required but not yet entered correctly.
     """
     # If no password is configured, allow access
-    if not LLM_AVAILABLE or not hasattr(settings, 'APP_PASSWORD') or not settings.APP_PASSWORD:
+    if not hasattr(settings, 'APP_PASSWORD') or not settings.APP_PASSWORD:
         return True
 
     # Check if already authenticated in session
@@ -2826,7 +2826,7 @@ def check_password() -> bool:
 
         if submit:
             if password == settings.APP_PASSWORD:
-                st.session_state.authenticated = True
+                st.session_state["authenticated"] = True
                 st.rerun()
             else:
                 st.error("Incorrect password. Please try again.")
