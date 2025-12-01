@@ -18,6 +18,43 @@ from llm_client import MockLLMClient
 import json
 
 
+def test_response_parsing_strips_markdown_and_trailing_text():
+    """JSON wrapped in fences and extra text should be normalized before parsing."""
+    question = Question(
+        id="test-fence",
+        text="Explain lists",
+        competency="Python",
+        difficulty="Easy",
+        keypoints=["ordered", "mutable"],
+    )
+
+    evaluator = LLMEvaluatorAgent(MockLLMClient(), "mock", 0.3)
+
+    fenced_response = """
+Here you go:
+```json
+{
+  "keypoints_coverage": [
+    {"keypoint": "ordered", "covered": true, "evidence": "mentioned ordering"},
+    {"keypoint": "mutable", "covered": false, "evidence": "Not mentioned"}
+  ],
+  "score": 72,
+  "mastery_label": "mixed",
+  "feedback": "Good but needs mutability",
+  "suggested_followup": "Can you explain mutability?"
+}
+```
+Thanks!
+"""
+
+    result = evaluator._parse_response(fenced_response, question, "answer")
+
+    assert result.score_0_100 == 72
+    assert result.mastery_label == "mixed"
+    assert len(result.keypoints_coverage) == 2
+    assert result.keypoints_coverage[0].covered is True
+
+
 def test_prompt_construction():
     """Test that prompts include all question fields."""
     print("\n=== Test: Prompt Construction ===")
@@ -113,6 +150,42 @@ def test_response_parsing_malformed_json():
     except ValueError:
         # Or it might raise ValueError, which is also acceptable
         print("✓ Malformed JSON raises ValueError (acceptable)")
+
+
+def test_validation_errors_surface_structured_error(caplog):
+    """Validation failures should be logged and returned via structured error details."""
+    caplog.set_level(logging.ERROR)
+
+    class InvalidPayloadClient:
+        def call_llm(self, *args, **kwargs):
+            return json.dumps(
+                {
+                    "keypoints_coverage": [
+                        {"keypoint": "ordered", "covered": "yes"},
+                    ],
+                    "score": 120,
+                    "mastery_label": "excellent",
+                    "feedback": ["Not a string"],
+                }
+            )
+
+    question = Question(
+        id="validation-1",
+        text="Explain lists",
+        competency="Python",
+        difficulty="Easy",
+        keypoints=["ordered"],
+    )
+
+    evaluator = LLMEvaluatorAgent(InvalidPayloadClient(), "mock", 0.3)
+    result = evaluator.evaluate(question, "answer")
+
+    assert result.error_details == {
+        "code": "parse_error",
+        "message": result.error.replace("Parse error: ", ""),
+    }
+    assert "score must be between 0 and 100" in result.error
+    assert any("validation failed" in record.message for record in caplog.records)
 
 
 def test_llm_call_error_sets_error_and_logs(caplog):

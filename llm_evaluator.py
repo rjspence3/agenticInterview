@@ -8,6 +8,8 @@ Drop-in replacement for the heuristic EvaluatorAgent with same interface.
 """
 
 import json
+import re
+from json import JSONDecodeError
 
 from logging_config import get_logger
 from models import EvaluationResult, KeypointCoverage, Question
@@ -171,7 +173,12 @@ class LLMEvaluatorAgent:
                 "LLM call failed",
                 extra={"question_id": question.id, "model": self.model, "error": str(e)},
             )
-            return self._error_fallback(question, answer, str(e))
+            return self._error_fallback(
+                question,
+                answer,
+                str(e),
+                {"code": "llm_call_error", "message": str(e)},
+            )
 
         # Step 3: Parse JSON response
         try:
@@ -192,7 +199,12 @@ class LLMEvaluatorAgent:
                     "raw_response": response_text,
                 },
             )
-            return self._error_fallback(question, answer, f"Parse error: {e}")
+            return self._error_fallback(
+                question,
+                answer,
+                f"Parse error: {e}",
+                {"code": "parse_error", "message": str(e)},
+            )
 
     def _build_prompt(self, question: Question, answer: str) -> str:
         """
@@ -242,48 +254,34 @@ class LLMEvaluatorAgent:
 
         Raises:
             ValueError: If JSON is malformed or missing required fields
-            json.JSONDecodeError: If response is not valid JSON
         """
-        # Extract JSON from response (LLM may add extra text)
-        json_start = response.find('{')
-        json_end = response.rfind('}') + 1
+        normalized = self._strip_response_markdown(response)
+        data = self._decode_json_payload(normalized, question)
 
-        if json_start == -1 or json_end == 0:
-            raise ValueError("No JSON found in LLM response")
+        validation_errors = self._validate_response_payload(data)
+        if validation_errors:
+            self.logger.error(
+                "LLM response validation failed",
+                extra={
+                    "question_id": question.id,
+                    "model": self.model,
+                    "validation_errors": validation_errors,
+                },
+            )
+            raise ValueError("; ".join(validation_errors))
 
-        json_str = response[json_start:json_end]
-
-        # Parse JSON
-        data = json.loads(json_str)
-
-        # Validate required fields
-        required_fields = ["keypoints_coverage", "score", "mastery_label", "feedback"]
-        for field in required_fields:
-            if field not in data:
-                raise ValueError(f"Missing required field: {field}")
-
-        # Build KeypointCoverage list
-        coverage = []
-        for item in data["keypoints_coverage"]:
-            coverage.append(KeypointCoverage(
+        coverage = [
+            KeypointCoverage(
                 keypoint=item["keypoint"],
                 covered=item["covered"],
-                evidence=item.get("evidence", "")
-            ))
-
-        # Validate mastery label
-        mastery_label = data["mastery_label"]
-        if mastery_label not in ["strong", "mixed", "weak"]:
-            self.logger.warning(
-                "Invalid mastery label; defaulting to 'mixed'",
-                extra={"question_id": question.id, "model": self.model, "mastery_label": mastery_label},
+                evidence=item.get("evidence", ""),
             )
-            mastery_label = "mixed"
+            for item in data["keypoints_coverage"]
+        ]
 
-        # Clamp score to 0-100
-        score = max(0, min(100, data["score"]))
+        mastery_label = data["mastery_label"]
+        score = data["score"]
 
-        # Build and return EvaluationResult
         return EvaluationResult(
             question_id=question.id,
             raw_answer=answer,
@@ -293,9 +291,98 @@ class LLMEvaluatorAgent:
             short_feedback=data["feedback"],
             suggested_followup=data.get("suggested_followup", ""),
             error=None,
+            error_details=None,
         )
 
-    def _error_fallback(self, question: Question, answer: str, error: str) -> EvaluationResult:
+    def _strip_response_markdown(self, response: str) -> str:
+        """Remove common markdown/code fences that may wrap JSON."""
+        fenced_match = re.search(r"```(?:json)?\s*(.*?)\s*```", response, re.IGNORECASE | re.DOTALL)
+        if fenced_match:
+            return fenced_match.group(1).strip()
+        return response.strip()
+
+    def _decode_json_payload(self, response: str, question: Question) -> dict:
+        """Decode JSON payload, tolerating leading/trailing chatter."""
+        decoder = json.JSONDecoder()
+        start_idx = response.find('{')
+        if start_idx == -1:
+            raise ValueError("No JSON found in LLM response")
+
+        try:
+            data, end_idx = decoder.raw_decode(response[start_idx:])
+        except JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON response: {exc.msg}") from exc
+
+        trailing_text = response[start_idx + end_idx:].strip()
+        if trailing_text:
+            self.logger.info(
+                "Ignoring trailing text after JSON payload",
+                extra={
+                    "question_id": question.id,
+                    "model": self.model,
+                    "trailing_text": trailing_text[:200],
+                },
+            )
+
+        if not isinstance(data, dict):
+            raise ValueError("LLM response JSON must be an object")
+
+        return data
+
+    def _validate_response_payload(self, data: dict) -> list[str]:
+        """Validate parsed JSON payload structure and content."""
+        errors: list[str] = []
+
+        required_fields = ["keypoints_coverage", "score", "mastery_label", "feedback"]
+        for field in required_fields:
+            if field not in data:
+                errors.append(f"Missing required field: {field}")
+
+        keypoints = data.get("keypoints_coverage", [])
+        if not isinstance(keypoints, list):
+            errors.append("keypoints_coverage must be a list")
+            keypoints = []
+
+        allowed_mastery = {"strong", "mixed", "weak"}
+        mastery_label = data.get("mastery_label")
+        if mastery_label not in allowed_mastery:
+            errors.append("mastery_label must be one of strong, mixed, weak")
+
+        score = data.get("score")
+        if not isinstance(score, (int, float)):
+            errors.append("score must be a number between 0 and 100")
+        elif not (0 <= score <= 100):
+            errors.append("score must be between 0 and 100")
+        else:
+            data["score"] = int(score)
+
+        feedback = data.get("feedback")
+        if not isinstance(feedback, str):
+            errors.append("feedback must be a string")
+
+        for idx, item in enumerate(keypoints):
+            if not isinstance(item, dict):
+                errors.append(f"keypoints_coverage[{idx}] must be an object")
+                continue
+            for required in ("keypoint", "covered"):
+                if required not in item:
+                    errors.append(f"keypoints_coverage[{idx}] missing required field: {required}")
+            if "keypoint" in item and not isinstance(item["keypoint"], str):
+                errors.append(f"keypoints_coverage[{idx}].keypoint must be a string")
+            if "covered" in item and not isinstance(item["covered"], bool):
+                errors.append(f"keypoints_coverage[{idx}].covered must be a boolean")
+            if "evidence" in item and item["evidence"] is not None and not isinstance(item["evidence"], str):
+                errors.append(f"keypoints_coverage[{idx}].evidence must be a string if provided")
+
+        return errors
+
+    def _error_fallback(
+        self,
+        question: Question,
+        answer: str,
+        error: str,
+        error_details: dict | None = None,
+    ) -> EvaluationResult:
         """
         Return a safe error result if LLM evaluation fails.
 
@@ -328,6 +415,7 @@ class LLMEvaluatorAgent:
             short_feedback=f"Unable to evaluate answer due to error: {error}",
             suggested_followup="Please try again or use heuristic evaluator.",
             error=error,
+            error_details=error_details,
         )
 
 
