@@ -43,3 +43,15 @@ pytest
 - Streamlit app for conducting AI-powered interviews
 - Uses session state for runtime storage
 - Multi-agent architecture (Orchestrator, Questions, Evaluator)
+
+---
+
+## Structure
+
+```
+alembic/
+  versions/
+demo_audio/
+scripts/
+tests/
+```
