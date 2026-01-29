@@ -85,7 +85,7 @@ To mitigate these gaps, the `LLMEvaluatorAgent` is the planned default whenever 
    streamlit run app.py
    ```
 
-8. **Open your browser** to `http://localhost:8501`
+8. **Open your browser** to `http://http://agentic-interview.test`
 
 ---
 
@@ -263,6 +263,35 @@ Built with:
 - **SQLAlchemy**: Python SQL toolkit and ORM
 - **OpenAI / Anthropic**: LLM providers for intelligent evaluation
 - **Alembic**: Database migration tool
+
+---
+
+## Local Development Routing
+
+This project is part of a multi-project dev environment with Caddy reverse proxy.
+
+| Type | URL |
+|------|-----|
+| Domain | http://agentic-interview.test/ |
+| Direct | http://http://agentic-interview.test/ |
+
+**Start this service:**
+```bash
+streamlit run app.py --server.port 8501 --server.address 127.0.0.1 --server.headless true
+```
+
+**Full environment:**
+```bash
+# Start all services + Caddy proxy
+~/Development/dev/run_all.sh
+
+# Stop all services
+~/Development/dev/stop_all.sh
+```
+
+**Prerequisites:** Caddy installed (`brew install caddy`), hosts entries configured (see `~/Development/dev/hosts.test.txt`)
+
+**Dashboard:** http://devhub.test/ | **Port registry:** `~/Development/dev/ports.json`
 
 ---
 

@@ -1,0 +1,252 @@
+{
+  "predict": {
+    "traces": [],
+    "train": [],
+    "demos": [
+      {
+        "augmented": true,
+        "question_text": "What is a list comprehension in Python?",
+        "answer": "A list comprehension is a concise Python syntax for creating lists. It provides a compact way to process iterables.",
+        "keypoints": [
+          "list comprehension",
+          "syntax",
+          "concise"
+        ],
+        "difficulty": "Easy",
+        "reasoning": "The answer correctly identifies what a list comprehension is and highlights its concise syntax for creating lists. However, it lacks specific examples or details about how list comprehensions work in practice, which could enhance the explanation.",
+        "covered_keypoints": [
+          "list comprehension",
+          "syntax",
+          "concise"
+        ],
+        "missed_keypoints": [],
+        "score": 100,
+        "mastery_label": "strong",
+        "feedback": "Great explanation of list comprehensions; it covers all key points effectively.",
+        "follow_up": ""
+      },
+      {
+        "augmented": true,
+        "question_text": "What is recursion?",
+        "answer": "Recursion is when a function calls itself. You need a base case to stop the recursion and a recursive case that moves toward the base case. Each call adds to the stack.",
+        "keypoints": [
+          "function calls itself",
+          "base case",
+          "recursive case",
+          "stack usage"
+        ],
+        "difficulty": "Medium",
+        "reasoning": "The answer provides a clear definition of recursion, explaining that it involves a function calling itself. It also mentions the importance of a base case to terminate the recursion and a recursive case that progresses towards this base case. Additionally, it touches on stack usage, which is relevant to how recursion operates. Overall, the answer covers all the keypoints effectively.",
+        "covered_keypoints": [
+          "function calls itself",
+          "base case",
+          "recursive case",
+          "stack usage"
+        ],
+        "missed_keypoints": [],
+        "score": 100,
+        "mastery_label": "strong",
+        "feedback": "Excellent explanation of recursion, covering all key concepts.",
+        "follow_up": "Can you provide an example of a recursive function?"
+      },
+      {
+        "augmented": true,
+        "question_text": "Explain what a Python decorator is and how it works.",
+        "answer": "A decorator is a function that wraps another function to modify its behavior. You use the @ syntax above a function definition. The decorator returns a function that typically calls the original function with added functionality.",
+        "keypoints": [
+          "function that wraps another function",
+          "@ syntax",
+          "modifies behavior",
+          "returns a function"
+        ],
+        "difficulty": "Medium",
+        "reasoning": "The answer provides a clear and accurate explanation of what a Python decorator is, including its purpose, how it is applied using the @ syntax, and its behavior in modifying the original function. All keypoints are addressed effectively.",
+        "covered_keypoints": [
+          "function that wraps another function",
+          "@ syntax",
+          "modifies behavior",
+          "returns a function"
+        ],
+        "missed_keypoints": [],
+        "score": 100,
+        "mastery_label": "strong",
+        "feedback": "Excellent answer that covers all aspects of Python decorators comprehensively.",
+        "follow_up": ""
+      },
+      {
+        "augmented": true,
+        "question_text": "What is the difference between a list and a tuple in Python?",
+        "answer": "Lists can be changed after creation while tuples cannot. Lists use square brackets and tuples use parentheses. I'd use a list for a shopping cart and a tuple for coordinates. Tuples are slightly faster due to immutability.",
+        "keypoints": [
+          "mutable vs immutable",
+          "syntax differences",
+          "use cases",
+          "performance"
+        ],
+        "difficulty": "Easy",
+        "reasoning": "The answer effectively covers the key differences between lists and tuples in Python, including mutability, syntax, use cases, and performance. The candidate clearly explains that lists are mutable and use square brackets, while tuples are immutable and use parentheses. They also provide practical examples of when to use each type, which demonstrates a good understanding of the concepts.",
+        "covered_keypoints": [
+          "mutable vs immutable",
+          "syntax differences",
+          "use cases",
+          "performance"
+        ],
+        "missed_keypoints": [],
+        "score": 100,
+        "mastery_label": "strong",
+        "feedback": "Excellent answer covering all keypoints with clear examples.",
+        "follow_up": ""
+      },
+      {
+        "question_text": "Explain what a Python decorator is and how it works.",
+        "answer": "",
+        "keypoints": [
+          "function that wraps another function",
+          "@ syntax",
+          "modifies behavior",
+          "returns a function"
+        ],
+        "difficulty": "Medium",
+        "covered_keypoints": [],
+        "missed_keypoints": [
+          "function that wraps another function",
+          "@ syntax",
+          "modifies behavior",
+          "returns a function"
+        ],
+        "score": 0,
+        "mastery_label": "weak",
+        "feedback": "No answer provided.",
+        "follow_up": "Can you explain what a decorator does?"
+      },
+      {
+        "question_text": "How would you design a URL shortener service?",
+        "answer": "I would use a hash function to generate short codes and store the mapping in a database. When users access the short URL, we redirect them to the original.",
+        "keypoints": [
+          "hash function",
+          "database storage",
+          "redirect logic",
+          "collision handling",
+          "scalability"
+        ],
+        "difficulty": "Hard",
+        "covered_keypoints": [
+          "hash function",
+          "database storage",
+          "redirect logic"
+        ],
+        "missed_keypoints": [
+          "collision handling",
+          "scalability"
+        ],
+        "score": 60,
+        "mastery_label": "mixed",
+        "feedback": "Basic design covered but missing collision handling and scalability discussion.",
+        "follow_up": "How would you handle hash collisions?"
+      },
+      {
+        "question_text": "How would you design a URL shortener service?",
+        "answer": "I would design a URL shortener service by designing a URL shortener service.",
+        "keypoints": [
+          "hash function",
+          "database storage",
+          "redirect logic",
+          "collision handling",
+          "scalability"
+        ],
+        "difficulty": "Hard",
+        "covered_keypoints": [],
+        "missed_keypoints": [
+          "hash function",
+          "database storage",
+          "redirect logic",
+          "collision handling",
+          "scalability"
+        ],
+        "score": 0,
+        "mastery_label": "weak",
+        "feedback": "Answer just restates the question without providing design details.",
+        "follow_up": "What specific components would your URL shortener have?"
+      },
+      {
+        "question_text": "What is the GIL and how does it affect multithreading in Python?",
+        "answer": "I don't know what that is.",
+        "keypoints": [
+          "GIL definition",
+          "thread safety",
+          "performance impact",
+          "alternatives like multiprocessing"
+        ],
+        "difficulty": "Hard",
+        "covered_keypoints": [],
+        "missed_keypoints": [
+          "GIL definition",
+          "thread safety",
+          "performance impact",
+          "alternatives like multiprocessing"
+        ],
+        "score": 0,
+        "mastery_label": "weak",
+        "feedback": "Candidate does not know this topic.",
+        "follow_up": "GIL stands for Global Interpreter Lock. Have you worked with threading in Python?"
+      }
+    ],
+    "signature": {
+      "instructions": "Evaluate interview answer coverage of expected keypoints.\n\nGiven an interview question, candidate answer, and expected keypoints,\ndetermine which keypoints are covered (semantically, not just literally)\nand provide a score and feedback.",
+      "fields": [
+        {
+          "prefix": "Question Text:",
+          "description": "The interview question that was asked"
+        },
+        {
+          "prefix": "Answer:",
+          "description": "The candidate's answer to evaluate"
+        },
+        {
+          "prefix": "Keypoints:",
+          "description": "List of expected concepts that should appear in a good answer"
+        },
+        {
+          "prefix": "Difficulty:",
+          "description": "Question difficulty: Easy, Medium, or Hard"
+        },
+        {
+          "prefix": "Reasoning: Let's think step by step in order to",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Covered Keypoints:",
+          "description": "Keypoints the answer addresses (semantic match, not just literal)"
+        },
+        {
+          "prefix": "Missed Keypoints:",
+          "description": "Keypoints not addressed in the answer"
+        },
+        {
+          "prefix": "Score:",
+          "description": "Score from 0-100 based on keypoint coverage and answer quality"
+        },
+        {
+          "prefix": "Mastery Label:",
+          "description": "Mastery level: 'strong' (80-100), 'mixed' (50-79), or 'weak' (0-49)"
+        },
+        {
+          "prefix": "Feedback:",
+          "description": "Brief, specific feedback on the answer"
+        },
+        {
+          "prefix": "Follow Up:",
+          "description": "Follow-up question to probe gaps (empty string if score >= 80)"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.1.0",
+      "cloudpickle": "3.1"
+    }
+  }
+}

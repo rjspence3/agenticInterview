@@ -111,6 +111,27 @@ except (ValueError, TypeError):
     logger.warning("Invalid LLM_MAX_CALLS_PER_MINUTE, using default 10")
 
 # ==============================================================================
+# DSPy Configuration (Phase 8)
+# ==============================================================================
+
+# Default evaluator type: "heuristic", "llm", or "dspy"
+EVALUATOR_TYPE = os.getenv("EVALUATOR_TYPE", "heuristic")
+
+# DSPy model (defaults to cost-effective gpt-4o-mini)
+DSPY_MODEL = os.getenv("DSPY_MODEL", "gpt-4o-mini")
+
+# Path to compiled DSPy module (optimized prompts)
+DSPY_COMPILED_PATH = os.getenv("DSPY_COMPILED_PATH", "compiled_evaluator.json")
+
+# DSPy temperature (0.0 for deterministic evaluation)
+try:
+    DSPY_TEMPERATURE = float(os.getenv("DSPY_TEMPERATURE", "0.0"))
+    DSPY_TEMPERATURE = max(0.0, min(1.0, DSPY_TEMPERATURE))
+except (ValueError, TypeError):
+    DSPY_TEMPERATURE = 0.0
+    logger.warning("Invalid DSPY_TEMPERATURE, using default 0.0")
+
+# ==============================================================================
 # Validation Functions
 # ==============================================================================
 
@@ -139,6 +160,27 @@ def validate_llm_config() -> Tuple[bool, str]:
 
     # All checks passed
     return True, ""
+
+def validate_dspy_config() -> Tuple[bool, str]:
+    """
+    Validate DSPy configuration.
+
+    Returns:
+        Tuple of (is_valid, error_message)
+        If valid: (True, "")
+        If invalid: (False, "Error description")
+    """
+    # Check that an API key is available
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
+        return False, "No API key configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY."
+
+    # Check model is specified
+    if not DSPY_MODEL:
+        return False, "DSPY_MODEL not configured."
+
+    # Compiled path is optional (DSPy works without it, just unoptimized)
+    return True, ""
+
 
 def get_api_key_for_provider(provider: str) -> str:
     """

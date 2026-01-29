@@ -1,16 +1,19 @@
+<!-- AUTO-GENERATED from ports.json — do not edit manually -->
+<!-- Regenerate: python3 ~/Development/generate_claude_md.py --apply -->
+
 # Agentic Interview
 
-AI-powered interview system with multi-agent evaluation.
+Python project.
 
 ---
 
 ## Environment Setup
 
 ```bash
-# Activate virtual environment (REQUIRED before any Python commands)
+# Activate virtual environment (REQUIRED)
 source .venv/bin/activate
 
-# Install dependencies (if needed)
+# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -20,29 +23,21 @@ pip install -r requirements.txt
 
 | Service | Domain | Port |
 |---------|--------|------|
-| Streamlit UI | http://agentic-interview.test | 8501 |
+| Ui | http://agentic-interview.test | 8501 |
 
-Port assignments are defined in `~/Development/dev/ports.json` (authoritative).
+Port assignments defined in `~/Development/dev/ports.json`.
 
 ---
 
 ## Commands
 
 ```bash
-# Start Streamlit app
+# Start UI
 streamlit run app.py --server.port 8501 --server.address 127.0.0.1 --server.headless true
 
 # Run tests
 pytest
 ```
-
----
-
-## Notes
-
-- Streamlit app for conducting AI-powered interviews
-- Uses session state for runtime storage
-- Multi-agent architecture (Orchestrator, Questions, Evaluator)
 
 ---
 
@@ -55,3 +50,9 @@ demo_audio/
 scripts/
 tests/
 ```
+
+---
+
+## Notes
+
+- Tech: Python

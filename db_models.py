@@ -43,6 +43,7 @@ class EvaluatorType(str, enum.Enum):
     """Type of evaluator used."""
     HEURISTIC = "heuristic"
     LLM = "llm"
+    DSPY = "dspy"
 
 
 class MasteryLabel(str, enum.Enum):

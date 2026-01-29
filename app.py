@@ -26,6 +26,14 @@ except ImportError as e:
     LLM_AVAILABLE = False
     logger.warning(f"LLM features not available: {e}")
 
+# Phase 8: DSPy Integration
+try:
+    from dspy_evaluator import DSPyEvaluatorAgent, DSPY_AVAILABLE as _DSPY_IMPORT_OK
+    DSPY_AVAILABLE = _DSPY_IMPORT_OK
+except ImportError as e:
+    DSPY_AVAILABLE = False
+    logger.warning(f"DSPy features not available: {e}")
+
 # Phase 6: Database Integration
 try:
     from database import get_db_session, init_db
@@ -129,42 +137,81 @@ def get_evaluator_agent() -> EvaluatorAgent:
     Get the appropriate evaluator based on selected mode.
 
     Returns:
-        EvaluatorAgent or LLMEvaluatorAgent instance
+        EvaluatorAgent, LLMEvaluatorAgent, or DSPyEvaluatorAgent instance
     """
     mode = st.session_state.get("evaluator_mode", "Heuristic")
 
     if mode == "Heuristic":
         return EvaluatorAgent()
 
-    # LLM mode selected
-    if not LLM_AVAILABLE:
-        st.sidebar.error("❌ LLM dependencies not installed")
-        st.sidebar.info("Install with: pip install -r requirements.txt")
-        return EvaluatorAgent()
+    elif mode == "DSPy-Optimized":
+        # DSPy mode selected
+        if not DSPY_AVAILABLE:
+            st.sidebar.error("❌ DSPy dependencies not installed")
+            st.sidebar.info("Install with: pip install dspy-ai")
+            return EvaluatorAgent()
 
-    # Validate configuration
-    is_valid, error_msg = settings.validate_llm_config()
+        # Validate configuration
+        is_valid, error_msg = settings.validate_dspy_config()
 
-    if not is_valid:
-        st.sidebar.error(f"❌ {error_msg}")
-        st.sidebar.info("📝 Setup: Copy .env.example to .env and add your API key")
-        return EvaluatorAgent()
+        if not is_valid:
+            st.sidebar.error(f"❌ {error_msg}")
+            st.sidebar.info("📝 Setup: Add OPENAI_API_KEY or ANTHROPIC_API_KEY to .env")
+            return EvaluatorAgent()
 
-    # Try to create LLM evaluator
-    try:
-        provider = settings.LLM_PROVIDER
-        api_key = settings.get_api_key_for_provider(provider)
-        client = get_llm_client(provider, api_key)
+        # Try to create DSPy evaluator
+        try:
+            return DSPyEvaluatorAgent(
+                model=settings.DSPY_MODEL,
+                compiled_path=settings.DSPY_COMPILED_PATH,
+                temperature=settings.DSPY_TEMPERATURE
+            )
+        except Exception as e:
+            st.sidebar.error(f"❌ DSPy initialization failed: {e}")
+            st.sidebar.info("Falling back to heuristic evaluator")
+            return EvaluatorAgent()
 
-        return LLMEvaluatorAgent(
-            client,
-            settings.LLM_MODEL,
-            settings.LLM_TEMPERATURE
-        )
-    except Exception as e:
-        st.sidebar.error(f"❌ LLM initialization failed: {e}")
-        st.sidebar.info("Falling back to heuristic evaluator")
-        return EvaluatorAgent()
+    else:
+        # LLM mode selected
+        if not LLM_AVAILABLE:
+            st.sidebar.error("❌ LLM dependencies not installed")
+            st.sidebar.info("Install with: pip install -r requirements.txt")
+            return EvaluatorAgent()
+
+        # Validate configuration
+        is_valid, error_msg = settings.validate_llm_config()
+
+        if not is_valid:
+            st.sidebar.error(f"❌ {error_msg}")
+            st.sidebar.info("📝 Setup: Copy .env.example to .env and add your API key")
+            return EvaluatorAgent()
+
+        # Try to create LLM evaluator
+        try:
+            provider = settings.LLM_PROVIDER
+            api_key = settings.get_api_key_for_provider(provider)
+            client = get_llm_client(provider, api_key)
+
+            return LLMEvaluatorAgent(
+                client,
+                settings.LLM_MODEL,
+                settings.LLM_TEMPERATURE
+            )
+        except Exception as e:
+            st.sidebar.error(f"❌ LLM initialization failed: {e}")
+            st.sidebar.info("Falling back to heuristic evaluator")
+            return EvaluatorAgent()
+
+
+def get_evaluator_type_enum():
+    """Map session evaluator_mode to EvaluatorType enum."""
+    mode = st.session_state.get("evaluator_mode", "Heuristic")
+    if mode == "Heuristic":
+        return EvaluatorType.HEURISTIC
+    elif mode == "DSPy-Optimized":
+        return EvaluatorType.DSPY
+    else:
+        return EvaluatorType.LLM
 
 
 # ==============================================================================
@@ -764,7 +811,7 @@ def render_interview_setup() -> None:
                     template_id=selected_template_id,
                     person_id=selected_person_id,
                     status=SessionStatus.IN_PROGRESS,
-                    evaluator_type=EvaluatorType.HEURISTIC if st.session_state.evaluator_mode == "Heuristic" else EvaluatorType.LLM,
+                    evaluator_type=get_evaluator_type_enum(),
                     started_at=func.now(),
                     session_metadata={}
                 )
@@ -772,7 +819,7 @@ def render_interview_setup() -> None:
                 db.flush()
 
                 session_id = new_session.id
-                evaluator_type = "heuristic" if st.session_state.evaluator_mode == "Heuristic" else "llm"
+                evaluator_type = get_evaluator_type_enum().value
                 logger.info(f"Interview session started: session_id={session_id}, person_id={selected_person_id}, template_id={selected_template_id}, evaluator_type={evaluator_type}")
 
             # Store session ID and initialize state
@@ -882,7 +929,7 @@ def render_db_current_question(session_id: int, person: dict, template: dict, qu
 
                     # Evaluate answer with loading indicator
                     eval_mode = st.session_state.get('evaluator_mode', 'Heuristic')
-                    spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode == "LLM-Powered" else "Evaluating answer..."
+                    spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode in ("LLM-Powered", "DSPy-Optimized") else "Evaluating answer..."
                     with st.spinner(spinner_msg):
                         evaluation = evaluator.evaluate(question_obj, answer.strip())
 
@@ -917,7 +964,7 @@ def render_db_current_question(session_id: int, person: dict, template: dict, qu
                         db.add(QuestionEvaluation(
                             session_id=session_id,
                             template_question_id=current_question['id'],
-                            evaluator_type=EvaluatorType.HEURISTIC if st.session_state.evaluator_mode == "Heuristic" else EvaluatorType.LLM,
+                            evaluator_type=get_evaluator_type_enum(),
                             score_0_100=evaluation.score_0_100,
                             mastery_label=mastery_map[evaluation.mastery_label],
                             raw_answer=answer.strip(),
@@ -1179,7 +1226,7 @@ def render_current_question(state: InterviewState, questions_agent: QuestionsAge
             else:
                 # Process answer through orchestrator with loading indicator
                 eval_mode = st.session_state.get('evaluator_mode', 'Heuristic')
-                spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode == "LLM-Powered" else "Evaluating answer..."
+                spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode in ("LLM-Powered", "DSPy-Optimized") else "Evaluating answer..."
                 with st.spinner(spinner_msg):
                     updated_state = orchestrator_agent.step(state, answer)
                 st.session_state.interview_state = updated_state
@@ -3232,7 +3279,7 @@ def process_chat_answer(answer: str) -> None:
 
     # Evaluate with loading indicator
     eval_mode = st.session_state.get('evaluator_mode', 'Heuristic')
-    spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode == "LLM-Powered" else "Evaluating answer..."
+    spinner_msg = "🤖 AI is evaluating your answer..." if eval_mode in ("LLM-Powered", "DSPy-Optimized") else "Evaluating answer..."
 
     # Note: We can't use spinner inside chat flow easily, evaluation happens synchronously
     evaluation = evaluator.evaluate(question_obj, answer)
@@ -3484,11 +3531,25 @@ def main() -> None:
     # Sidebar: Evaluator Configuration
     st.sidebar.title("⚙️ Configuration")
 
-    if LLM_AVAILABLE:
+    if LLM_AVAILABLE or DSPY_AVAILABLE:
+        # Build options list based on available features
+        options = ["Heuristic"]
+        if LLM_AVAILABLE:
+            options.append("LLM-Powered")
+        if DSPY_AVAILABLE:
+            options.append("DSPy-Optimized")
+
+        # Determine current index
+        current_mode = st.session_state.evaluator_mode
+        if current_mode in options:
+            current_index = options.index(current_mode)
+        else:
+            current_index = 0
+
         evaluator_mode = st.sidebar.radio(
             "Evaluation Method",
-            options=["Heuristic", "LLM-Powered"],
-            index=0 if st.session_state.evaluator_mode == "Heuristic" else 1,
+            options=options,
+            index=current_index,
             help="""
             **Heuristic**: Simple keyword matching
             - ✓ Fast, instant results
@@ -3499,6 +3560,13 @@ def main() -> None:
             **LLM-Powered**: AI semantic analysis
             - ✓ Understands context and nuance
             - ✓ Richer, detailed feedback
+            - ✗ Requires API key
+            - ✗ Costs money per evaluation
+
+            **DSPy-Optimized**: Self-optimizing AI evaluation
+            - ✓ Semantic understanding (recognizes paraphrases)
+            - ✓ Learns from examples
+            - ✓ Optimized prompts for accuracy
             - ✗ Requires API key
             - ✗ Costs money per evaluation
             """
@@ -3515,6 +3583,13 @@ def main() -> None:
 
         if evaluator_mode == "Heuristic":
             st.sidebar.info("✓ Using: **Heuristic** (keyword matching)")
+        elif evaluator_mode == "DSPy-Optimized":
+            # Check if DSPy is properly configured
+            is_valid, error_msg = settings.validate_dspy_config()
+            if is_valid:
+                st.sidebar.success(f"✓ Using: **DSPy** ({settings.DSPY_MODEL})")
+            else:
+                st.sidebar.warning(f"⚠️ DSPy config issue: {error_msg}")
         else:
             # Check if LLM is properly configured
             is_valid, error_msg = settings.validate_llm_config()
