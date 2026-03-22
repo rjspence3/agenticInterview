@@ -2099,14 +2099,19 @@ def render_people_management() -> None:
             submit = st.form_submit_button("Add Person")
 
             if submit:
-                if not name.strip():
-                    st.error("Name is required")
-                elif not email.strip():
-                    st.error("Email is required")
-                else:
-                    # Parse tags
-                    tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()]
+                tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()]
 
+                from validators import validate_person_form
+                is_valid, error_msg = validate_person_form(
+                    name=name.strip(),
+                    email=email.strip(),
+                    role=role.strip() if role.strip() else None,
+                    department=department.strip() if department.strip() else None,
+                    tags=tags if tags else None,
+                )
+                if not is_valid:
+                    st.error(error_msg)
+                else:
                     try:
                         with get_db_session() as db:
                             new_person = Person(
@@ -2857,6 +2862,13 @@ def check_password() -> bool:
     """
     # If no password is configured, allow access
     if not hasattr(settings, 'APP_PASSWORD') or not settings.APP_PASSWORD:
+        # PUBLIC: dev/test mode — intentionally unauthenticated when APP_PASSWORD is empty.
+        # WARNING: set APP_PASSWORD in .env before any public or production deployment.
+        st.warning(
+            "⚠️ **No authentication configured.** "
+            "Set `APP_PASSWORD` in your `.env` file before deploying to production.",
+            icon="🔓"
+        )
         return True
 
     # Check if already authenticated in session
