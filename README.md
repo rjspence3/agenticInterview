@@ -85,7 +85,7 @@ To mitigate these gaps, the `LLMEvaluatorAgent` is the planned default whenever 
    streamlit run app.py
    ```
 
-8. **Open your browser** to `http://http://agentic-interview.test`
+8. **Open your browser** to `http://agentic-interview.test`
 
 ---
 
@@ -252,7 +252,7 @@ This is an MVP system. For questions or issues:
 
 ## 📄 License
 
-[Specify your license here]
+MIT
 
 ---
 
